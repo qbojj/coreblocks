@@ -37,5 +37,4 @@ RUN git clone --depth=1 https://github.com/pyenv/pyenv.git .pyenv && \
     python -m venv venv3.6 && \
     . venv3.6/bin/activate && \
     python -m pip install --upgrade pip && \
-    python -m pip install riscof && \
     pyenv global system

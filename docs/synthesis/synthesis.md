@@ -4,7 +4,7 @@ Coreblocks is verified at several levels of abstraction. Beside of unit tests an
 synthesise the core to the ECP5 FPGA target, to check that it can work in reality. Performance is verified
 using synthesis results and a set of benchmarks simulated with cycle precision in cocotb. We also verify
 correctness of the core behaviour by running assembler tests from [riscv-tests](https://github.com/riscv-software-src/riscv-tests/tree/master)
-and [riscv-arch-tests](https://github.com/riscv-non-isa/riscv-arch-test).
+and [riscv-arch-test](https://github.com/riscv/riscv-arch-test).
 
 These three verification steps are automatically run by CI on every commit delivered to the `master` branch. Running
 the checks in CI allow us to collect historical data, which are available in the form of the graphs

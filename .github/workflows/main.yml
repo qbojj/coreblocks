@@ -1,31 +1,33 @@
 name: CI
 
-on:
-  push:
-    branches:
-      - master
-      - 'feature/**'
-  pull_request:
-    branches:
-      - master
-      - 'feature/**'
-  workflow_dispatch:
-
-jobs:
-  build-core:
-    name: Synthesize full core
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
+      - name: Checkout with submodules
         uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-            python-version: '3.13'
+          submodules: recursive
 
-      - name: Install Coreblocks dependencies
+      - name: Update riscv-arch-test submodule to latest
+        run: |
+          # ensure the riscv-arch-test submodule is updated to the latest upstream
+          git submodule update --init --remote test/external/riscof/riscv-arch-test || true
+
+      - name: Build riscv-arch-test suites
+        run: |
+          cd test/external/riscv-arch-test/riscv-test-suite
+          make -j$(nproc) rv32i_m || true
+          make -j$(nproc) rv64i_m || true
+
+      - name: Build tests for Coreblocks (compile ELFs)
+        run: |
+          mkdir -p ../../test/external/riscof/riscv-arch-test_build
+          find test/external/riscof/riscv-arch-test/riscv-test-suite -type f -name "*.S" -print0 | \
+            xargs -0 -n1 -P$(nproc) -I{} sh -c 'out=../../test/external/riscof/riscv-arch-test_build/$(basename {} .S).elf; riscv64-unknown-elf-gcc -march=rv64imac -mabi=lp64 -static -nostdlib -nostartfiles -o "$out" "{}" || true'
+
+      - name: Upload compiled tests artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: "riscv-arch-test"
+          path: |
+            test/external/riscof/riscv-arch-test_build/**/*.elf
         run: |
           python3 -m venv venv
           . venv/bin/activate
@@ -51,40 +53,38 @@ jobs:
     container: ghcr.io/kuznia-rdzeni/riscv-toolchain:2024.12.07
     timeout-minutes: 10
     env:
-      PYENV_ROOT: "/root/.pyenv"
       LC_ALL: "C.UTF8"
       LANG: "C.UTF8"
     defaults:
       run:
-        working-directory: test/external/riscof/
+        working-directory: test/external/
 
     steps:
-      - name: Checkout
+      - name: Checkout with submodules
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Update riscv-arch-test submodule to latest
+        run: |
+          git config --global --add safe.directory /__w/coreblocks/coreblocks
+          git submodule update --init --remote test/external/riscv-arch-test
 
       - name: Get submodules HEAD hash
-        working-directory: .
         run: |
-          # ownership workaround
           git config --global --add safe.directory /__w/coreblocks/coreblocks
-          # paths in command are relative!
           git submodule > .gitmodules-hash
 
-      - name: Cache compiled and reference riscv-arch-test
+      - name: Cache compiled riscv-arch-test ELFs
         id: cache-riscv-arch-test
         uses: actions/cache@v4
         env:
-          cache-name: cache-riscv-arch-test
+          cache-name: cache-riscv-arch-test-elfs
         with:
           path: |
-            test/external/riscof/riscv-arch-test/**/*.elf
-            test/external/riscof/riscof_work/**/*.signature
-            test/external/riscof/**/*Makefile*
+            test/external/riscv-arch-test-build/**/*.elf
 
           key: ${{ env.cache-name }}-${{ runner.os }}-${{ hashFiles(
-              '**/test/external/riscof/coreblocks/**',
-              '**/test/external/riscof/spike_simple/**',
-              '**/test/external/riscof/config.ini',
               '**/.gitmodules-hash',
               '**/docker/riscv-toolchain.Dockerfile',
               '**/.github/workflows/main.yml'
@@ -92,48 +92,26 @@ jobs:
           lookup-only: true
 
       - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Checkout with submodules
-        uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Setup PATH
-        run: echo "/.pyenv/bin" >> $GITHUB_PATH
-
-      - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Setup pyenv python
+        name: Build riscv-arch-test suites
         run: |
-          eval "$(pyenv init --path)"
-          pyenv global 3.6.15
-          . /venv3.6/bin/activate
+          cd test/external/riscv-arch-test/riscv-test-suite
+          make -j$(nproc) rv32i_m || true
+          make -j$(nproc) rv64i_m || true
 
       - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Setup arch test suite
+        name: Build test ELFs for Coreblocks
         run: |
-          . /venv3.6/bin/activate
-          riscof testlist --config=config.ini --suite=riscv-arch-test/riscv-test-suite/ --env=riscv-arch-test/riscv-test-suite/env
+          mkdir -p test/external/riscv-arch-test-build
+          # Compile all test sources (.S files) from the test suite
+          find test/external/riscv-arch-test/riscv-test-suite -type f -name "*.S" -print0 | \
+            xargs -0 -n1 -P$(nproc) -I{} sh -c 'out=test/external/riscv-arch-test-build/$(basename {} .S).elf; riscv64-unknown-elf-gcc -march=rv64imac -mabi=lp64 -static -nostdlib -nostartfiles -I test/external/riscv-arch-test/riscv-test-suite/env -o "$out" "{}" 2>/dev/null || true'
 
-      - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Build and run tests on reference and generate Makefiles
-        run: |
-          . /venv3.6/bin/activate
-          riscof run --config=config.ini --suite=riscv-arch-test/riscv-test-suite/ --env=riscv-arch-test/riscv-test-suite/env
-
-      - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Build tests for Coreblocks
-        run: |
-          MAKEFILE_PATH=riscof_work/Makefile.build-DUT-coreblocks ../../../ci/riscof_run_makefile.sh
-
-      - if: ${{ steps.cache-riscv-arch-test.outputs.cache-hit != 'true' }}
-        name: Upload compiled and reference tests artifact
+      - name: Upload compiled test ELFs artifact
         uses: actions/upload-artifact@v7
         with:
-          name: "riscof-tests"
+          name: "riscv-arch-test-elfs"
           path: |
-            test/external/riscof/riscv-arch-test/**/*.elf
-            test/external/riscof/riscof_work/**/*.signature
-            test/external/riscof/**/*Makefile*
+            test/external/riscv-arch-test-build/**/*.elf
 
   run-riscof-tests:
     name: Run regression tests (riscv-arch-test)
@@ -168,33 +146,17 @@ jobs:
           name: "verilog-full-core"
           path: .
 
-      - uses: actions/cache@v4
-        name: Download tests from cache
-        env:
-          cache-name: cache-riscv-arch-test
+      - uses: actions/download-artifact@v8
+        name: Download compiled test ELFs
         with:
-          path: |
-            test/external/riscof/riscv-arch-test/**/*.elf
-            test/external/riscof/riscof_work/**/*.signature
-            test/external/riscof/**/*Makefile*
+          name: "riscv-arch-test-elfs"
+          path: test/external/riscv-arch-test-build
 
-          key: ${{ env.cache-name }}-${{ runner.os }}-${{ hashFiles(
-              '**/test/external/riscof/coreblocks/**',
-              '**/test/external/riscof/spike_simple/**',
-              '**/test/external/riscof/config.ini',
-              '**/.gitmodules-hash',
-              '**/docker/riscv-toolchain.Dockerfile',
-              '**/.github/workflows/main.yml'
-            ) }}
-          fail-on-cache-miss: true
-
-      - name: Run tests on Coreblocks
+      - name: Run riscv-arch-test on Coreblocks with cocotb
         run: |
           . venv/bin/activate
-          MAKEFILE_PATH=test/external/riscof/riscof_work/Makefile.run-DUT-coreblocks NPROC=1 ./ci/riscof_run_makefile.sh
-
-      - name: Compare signatures (test results)
-        run: MAKEFILE_PATH=test/external/riscof/riscof_work/Makefile.run-DUT-coreblocks ./ci/riscof_compare.sh
+          # Run all compiled ELFs and check exit codes (self-checking binaries)
+          sh ./ci/run_riscv_arch_tests_cocotb.sh test/external/riscv-arch-test-build
 
 
   build-regression-tests:
