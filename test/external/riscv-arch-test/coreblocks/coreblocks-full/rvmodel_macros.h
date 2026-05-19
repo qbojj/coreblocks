@@ -1,11 +1,8 @@
 #ifndef _RVMODEL_MACROS_H
 #define _RVMODEL_MACROS_H
 
-#define RVMODEL_DATA_SECTION \
-        .pushsection .tohost,"aw",@progbits;                \
-        .align 8; .global tohost; tohost: .dword 0;         \
-        .align 8; .global fromhost; fromhost: .dword 0;     \
-        .popsection;
+#define RVMODEL_ENDTEST_ADDRESS 0xF0000000
+#define RVMODEL_CONSOLE_ADDRESS 0xF0001000
 
 ##### STARTUP #####
 
@@ -28,10 +25,9 @@
 # When the test is run in simulation, this should end the simulation.
 #define RVMODEL_HALT_PASS  \
   li x1, 1                ;\
-  la t0, tohost           ;\
+  li t0, RVMODEL_ENDTEST_ADDRESS ;\
   write_tohost_pass:      ;\
     sw x1, 0(t0)          ;\
-    sw x0, 4(t0)          ;\
   self_loop_pass:         ;\
     j self_loop_pass      ;\
 
@@ -39,10 +35,9 @@
 # When the test is run in simulation, this should end the simulation.
 #define RVMODEL_HALT_FAIL \
   li x1, 3                ;\
-  la t0, tohost           ;\
+  li t0, RVMODEL_ENDTEST_ADDRESS ;\
   write_tohost_fail:      ;\
     sw x1, 0(t0)          ;\
-    sw x0, 4(t0)          ;\
   self_loop_fail:         ;\
     j self_loop_fail      ;\
 
@@ -58,7 +53,17 @@
 # A pointer to the string is passed in _STR_PTR.
 # _R1, _R2, and _R3 can be used as temporary registers if needed.
 # Do not modify any other registers (or make sure to restore them).
-#define RVMODEL_IO_WRITE_STR(_R1, _R2, _R3, _STR_PTR)
+#define RVMODEL_IO_WRITE_STR(_R1, _R2, _R3, _STR_PTR) \
+  li _R2, RVMODEL_CONSOLE_ADDRESS ;\
+  mv _R3, _STR_PTR ;\
+  beqz _R3, 2f     ;\
+1:                 ;\
+  lbu _R1, 0(_R3)  ;\
+  beqz _R1, 2f     ;\
+  sb _R1, 0(_R2)   ;\
+  addi _R3, _R3, 1 ;\
+  j 1b             ;\
+2:
 
 ##### Access Fault #####
 
@@ -66,7 +71,7 @@
 
 ##### Interrupt Latency #####
 
-#define RVMODEL_INTERRUPT_LATENCY 10
+#define RVMODEL_INTERRUPT_LATENCY 100
 
 ##### Machine Timer #####
 
@@ -82,8 +87,8 @@
 
 #define RVMODEL_MSIP_ADDRESS (CLINT_BASE_ADDRESS + 0x0)
 
-#define RVMODEL_SET_MEXT_INT(_R1, _R2) nop;
-#define RVMODEL_CLR_MEXT_INT(_R1, _R2) nop;
+#define RVMODEL_SET_MEXT_INT(_R1, _R2)
+#define RVMODEL_CLR_MEXT_INT(_R1, _R2)
 
 #define RVMODEL_SET_MSW_INT(_R1, _R2) \
   li _R1, 1; \
@@ -96,9 +101,9 @@
 
 ##### Supervisor Interrupts #####
 
-#define RVMODEL_SET_SEXT_INT(_R1, _R2) nop;
-#define RVMODEL_CLR_SEXT_INT(_R1, _R2) nop;
-#define RVMODEL_SET_SSW_INT(_R1, _R2) nop;
-#define RVMODEL_CLR_SSW_INT(_R1, _R2) nop;
+#define RVMODEL_SET_SEXT_INT(_R1, _R2)
+#define RVMODEL_CLR_SEXT_INT(_R1, _R2)
+#define RVMODEL_SET_SSW_INT(_R1, _R2)
+#define RVMODEL_CLR_SSW_INT(_R1, _R2)
 
 #endif // _RVMODEL_MACROS_H
