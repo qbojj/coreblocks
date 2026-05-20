@@ -1,0 +1,1 @@
+python run_elfs.py --backend cocotb {debug:--traces}
