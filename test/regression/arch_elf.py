@@ -5,11 +5,12 @@ import sys
 import re
 from pathlib import Path
 
-from .memory import CoreMemoryModel, MemorySegment, ReadReply, ReadRequest, SegmentFlags, WriteReply, WriteRequest, load_segments_from_elf
+from .memory import CoreMemoryModel, MemorySegment, ReadReply, ReadRequest, ReplyStatus, SegmentFlags, WriteReply, WriteRequest, load_segments_from_elf
 
 
 ENDTEST_ADDRESS = 0xF0000000
 CONSOLE_ADDRESS = 0xF0001000
+ACCESS_FAULT_ADDRESS = 0x00000010
 
 ZIFENCEI_PATTERN = re.compile("zifencei", re.IGNORECASE)
 
@@ -53,10 +54,22 @@ class ConsoleMMIO(MemorySegment):
         return WriteReply()
 
 
+class AccessFaultAddressMMIO(MemorySegment):
+    def __init__(self):
+        super().__init__(range(ACCESS_FAULT_ADDRESS, ACCESS_FAULT_ADDRESS + 8), SegmentFlags.READ | SegmentFlags.WRITE | SegmentFlags.EXECUTABLE)
+
+    def read(self, req: ReadRequest) -> ReadReply:
+        return ReadReply(status=ReplyStatus.ERROR)
+
+    def write(self, req: WriteRequest) -> WriteReply:
+        return WriteReply(status=ReplyStatus.ERROR)
+
+
 def build_memory_model(elf_path: str | Path, stop_callback, **kwargs) -> tuple[CoreMemoryModel, EndTestMMIO]:
     segments = []
     segments.extend(load_segments_from_elf(str(elf_path), **kwargs))
     segments.append(ConsoleMMIO())
+    segments.append(AccessFaultAddressMMIO())
     endtest = EndTestMMIO(stop_callback)
     segments.append(endtest)
     return CoreMemoryModel(segments), endtest
@@ -74,14 +87,7 @@ async def run_arch_elf(sim_backend, elf_path: str | Path, timeout_cycles: int = 
         disable_write_protection=ZIFENCEI_PATTERN.search(elf_path.name) is not None,
     )
 
-    try:
-        result = await sim_backend.run(mem_model, timeout_cycles=timeout_cycles)
-    except Exception as exc:
-        print(f"{elf_path.name}: simulation error: {exc}", file=sys.stderr)
-        return 1
+    result = await sim_backend.run(mem_model, timeout_cycles=timeout_cycles)
 
-    if not result.success:
-        print(f"{elf_path.name}: simulation timed out", file=sys.stderr)
-        return 1
-
+    assert result.success
     assert endtest.written_value == 1

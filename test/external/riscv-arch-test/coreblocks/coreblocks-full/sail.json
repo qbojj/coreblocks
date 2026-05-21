@@ -3,8 +3,8 @@
   "base": {
     "xlen": 32,
     "E": false,
-    "writable_misa": true,
-    "writable_fiom": true,
+    "writable_misa": false,
+    "writable_fiom": false,
     // The top 29 bits in this value control whether the corresponding
     // HPM counters (hpmcounter31 .. hpmcounter3) are supported
     // (i.e. are not read-only zero). A set bit specifies that the
@@ -12,7 +12,7 @@
     // (writable_hpm_counters[2 .. 0]) are ignored.
     "writable_hpm_counters": {
       "len": 32,
-      "value": "0xFFFF_FFFF"
+      "value": "0x0000_0000"
     },
     // The top 29 bits in this value control whether the
     // corresponding bits of the `scounteren` CSR that control HPM
@@ -23,7 +23,7 @@
     // `writable_hpm_counters`.
     "scounteren_writable_bits": {
       "len": 32,
-      "value": "0xFFFF_FFFF"
+      "value": "0x0000_0000"
     },
     // These settings control whether the specified exceptions
     // cause information to be written into the appropriate
@@ -77,16 +77,16 @@
   },
   "memory": {
     "pmp": {
-      "grain": 0,
+      "grain": 3,
       // This specifies the number of PMP entries present.
       // The value must be one of 0, 16, or 64.
-      "count": 64,
+      "count": 16,
       // This specifies the number of usable PMP entries.
       // Entries higher than this are read-only-zero.
       // The value must be less than or equal to `count`.
-      "usable_count": 64,
+      "usable_count": 16,
       "tor_supported": true,
-      "na4_supported": true,
+      "na4_supported": false,
       "napot_supported": true
     },
     // These settings control global support for misaligned access so they are
@@ -104,21 +104,21 @@
         // (use `{"Some": "AlignmentException"}`).
         // This option controls scalar loads/stores.
         "load_store": {
-          "None": null
+          "Some": "AlignmentException"
         },
         // A misaligned vector load/store can be configured
         // independently of the scalar case above, but uses the same
         // option values.
         "vector": {
-          "None": null
+          "Some": "AlignmentException"
         },
         // A misaligned LR/SC currently always faults, and this field can specify
         // whether it generates an access fault (use `"AccessFault"`)
         // or a misaligned exception (use `"AlignmentException"`).
-        "lrsc": "AccessFault",
+        "lrsc": "AlignmentException",
         // Similarly, a misaligned AMO currently always faults, and this field
         // can specify either `"AccessFault"` or `"AlignmentException"`.
-        "amo": "AccessFault"
+        "amo": "AlignmentException"
       },
       // If a misaligned access was specified to have no fault in `exceptions` above, the
       // fields below specify how it is handled.
@@ -262,7 +262,7 @@
   },
   "platform": {
     "vendorid": 0,
-    "archid": 0,
+    "archid": 44,
     "impid": 0,
     "hartid": 0,
     // Cache block size, specified as a power of 2.
@@ -271,7 +271,7 @@
       // This specifies both the size and alignment of the reservation set, specified as a power of 2.
       // It must be at least 2 on RV32 and 3 on RV64 to support Zalrsc.  It must not be more than
       // 6 for Za64rs and 7 for Za128rs.  In all cases, it must be less than or equal to 12.
-      "reservation_set_size_exp": 3,
+      "reservation_set_size_exp": 12,
       // Some implementations (e.g. Spike) require the Store-Conditional to provide the same
       // address as the matching Load-Reserve in order to succeed, regardless of the
       // configured reservation set size.  This controls whether such an exact address
@@ -291,7 +291,7 @@
       "base": 201326592
     },
     "clock_frequency": 1000000000,
-    "instructions_per_tick": 2,
+    "instructions_per_tick": 1,
     "wfi_is_nop": false,
     // The maximum increment in the time CSR before a wait instruction
     // (e.g. WFI, WRS.NTO, WRS.STO) that is not a NOP expires its
@@ -314,10 +314,10 @@
       "supported": true
     },
     "F": {
-      "supported": true
+      "supported": false
     },
     "D": {
-      "supported": true
+      "supported": false
     },
     "V": {
       // `support_level` must be one of the below strings:
@@ -331,7 +331,7 @@
       // For e.g. Zve32x and Zve32f require `elen_exp` >= 5,
       // Zve64x, Zve64f, and Zve64d require `elen_exp` >= 6,
       // and V requires `elen_exp` >= 6 and `vlen_exp` >= 7.
-      "support_level": "Full",
+      "support_level": "Disabled",
       "vlen_exp": 10,
       "elen_exp": 6,
       "vl_use_ceil": false
@@ -346,43 +346,43 @@
       "supported": true
     },
     "Zibi": {
-      "supported": true
+      "supported": false
     },
     // This extension just asserts that the cache block size is 64 bytes.
     // If you enable this you also need to ensure `platform.cache_block_size_exp`
     // is 6, otherwise you will get a config validation error.
     "Zic64b": {
-      "supported": true
+      "supported": false
     },
     "Zicbom": {
-      "supported": true
+      "supported": false
     },
     "Zicbop": {
-      "supported": true
+      "supported": false
     },
     "Zicboz": {
-      "supported": true
+      "supported": false
     },
     "Ziccamoa": {
-      "supported": true
+      "supported": false
     },
     "Ziccamoc": {
-      "supported": true
+      "supported": false
     },
     "Ziccif": {
-      "supported": true
+      "supported": false
     },
     "Zicclsm": {
-      "supported": true
+      "supported": false
     },
     "Ziccrse": {
-      "supported": true
+      "supported": false
     },
     "Zicfilp": {
-      "supported": true
+      "supported": false
     },
     "Zicfiss": {
-      "supported": true
+      "supported": false
     },
     "Zicond": {
       "supported": true
@@ -397,16 +397,16 @@
       "supported": true
     },
     "Zihintntl": {
-      "supported": true
+      "supported": false
     },
     "Zihintpause": {
-      "supported": true
+      "supported": false
     },
     "Zihpm": {
-      "supported": true
+      "supported": false
     },
     "Zimop": {
-      "supported": true
+      "supported": false
     },
     "Zmmul": {
       "supported": true
@@ -415,16 +415,16 @@
       "supported": true
     },
     "Zabha": {
-      "supported": true
+      "supported": false
     },
     "Zacas": {
-      "supported": true
+      "supported": false
     },
     "Zalrsc": {
       "supported": true
     },
     "Zawrs": {
-      "supported": true,
+      "supported": false,
       "nto": {
         "is_nop": false
       },
@@ -433,16 +433,16 @@
       }
     },
     "Zfa": {
-      "supported": true
+      "supported": false
     },
     "Zfbfmin": {
-      "supported": true
+      "supported": false
     },
     "Zfh": {
-      "supported": true
+      "supported": false
     },
     "Zfhmin": {
-      "supported": true
+      "supported": false
     },
     "Zfinx": {
       "supported": false
@@ -454,16 +454,16 @@
       "supported": true
     },
     "Zcf": {
-      "supported": true
+      "supported": false
     },
     "Zcd": {
-      "supported": true
+      "supported": false
     },
     "Zcb": {
       "supported": true
     },
     "Zcmop": {
-      "supported": true
+      "supported": false
     },
     "Zba": {
       "supported": true
@@ -478,38 +478,38 @@
       "supported": true
     },
     "Zbkb": {
-      "supported": true
+      "supported": false
     },
     "Zbkc": {
-      "supported": true
+      "supported": false
     },
     "Zbkx": {
       "supported": true
     },
     "Zknd": {
-      "supported": true
+      "supported": false
     },
     "Zkne": {
-      "supported": true
+      "supported": false
     },
     "Zknh": {
-      "supported": true
+      "supported": false
     },
     "Zkr": {
-      "supported": true,
+      "supported": false,
       "sseed_reset_value": false,
       "useed_reset_value": false,
       "sseed_read_only_zero": false,
       "useed_read_only_zero": false
     },
     "Zksed": {
-      "supported": true
+      "supported": false
     },
     "Zksh": {
-      "supported": true
+      "supported": false
     },
     "Zkt": {
-      "supported": true
+      "supported": false
     },
     "Zhinx": {
       "supported": false
@@ -518,73 +518,73 @@
       "supported": false
     },
     "Zvabd": {
-      "supported": true
+      "supported": false
     },
     "Zvfbfmin": {
-      "supported": true
+      "supported": false
     },
     "Zvfbfwma": {
-      "supported": true
+      "supported": false
     },
     "Zvfh": {
-      "supported": true
+      "supported": false
     },
     "Zvfhmin": {
-      "supported": true
+      "supported": false
     },
     "Zvbb": {
-      "supported": true
+      "supported": false
     },
     "Zvbc": {
-      "supported": true
+      "supported": false
     },
     "Zvkb": {
-      "supported": true
+      "supported": false
     },
     "Zvkg": {
-      "supported": true
+      "supported": false
     },
     "Zvkned": {
-      "supported": true
+      "supported": false
     },
     "Zvknha": {
-      "supported": true
+      "supported": false
     },
     "Zvknhb": {
-      "supported": true
+      "supported": false
     },
     "Zvksed": {
-      "supported": true
+      "supported": false
     },
     "Zvksh": {
-      "supported": true
+      "supported": false
     },
     "Zvkt": {
-      "supported": true
+      "supported": false
     },
     "Ssccptr": {
-      "supported": true
+      "supported": false
     },
     "Sscofpmf": {
-      "supported": true
+      "supported": false
     },
     "Sscounterenw": {
       "supported": true
     },
     "Sstc": {
-      "supported": true
+      "supported": false
     },
     "Sstvala": {
       "supported": true
     },
     "Svade": {
-      "supported": true
+      "supported": false
     },
     "Svadu": {
-      "supported": true
+      "supported": false
     },
     "Svinval": {
-      "supported": true
+      "supported": false
     },
     "Svrsw60t59b": {
       "supported": false
@@ -593,14 +593,14 @@
       "supported": false
     },
     "Smcntrpmf": {
-      "supported": true
+      "supported": false
     },
     "Svbare": {
       "supported": true,
-      "sfence_vma_illegal_if_svbare_only": true
+      "sfence_vma_illegal_if_svbare_only": false
     },
     "Sv32": {
-      "supported": true
+      "supported": false
     },
     "Sv39": {
       "supported": false
@@ -613,16 +613,16 @@
     },
     "Stateen": {
       "Smstateen": {
-        "supported": true
+        "supported": false
       },
       "Ssstateen": {
-        "supported": true
+        "supported": false
       },
       "C_readonly_zero": true,
       "SE0_readonly_zero": false
     },
     "Ssqosid": {
-      "supported": true,
+      "supported": false,
       "rcid_length": 12,
       "mcid_length": 12
     },
@@ -630,7 +630,7 @@
       "supported": false
     },
     "Svvptc": {
-      "supported": true
+      "supported": false
     }
   }
 }

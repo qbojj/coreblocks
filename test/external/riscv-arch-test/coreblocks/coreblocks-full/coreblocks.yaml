@@ -157,7 +157,7 @@ params:
   MTVEC_BASE_ALIGNMENT_VECTORED: 4
   MTVEC_ILLEGAL_WRITE_BEHAVIOR: retain
   NUM_PMP_ENTRIES: 16
-  PMP_GRANULARITY: 2
+  PMP_GRANULARITY: 3
   HPM_COUNTER_EN:
     [
       false,
@@ -193,41 +193,7 @@ params:
       false,
       false,
     ]
-  COUNTINHIBIT_EN:
-    [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]
+  MCOUNTINHIBIT_IMPLEMENTED: false
   MCOUNTENABLE_EN:
     [
       true,
