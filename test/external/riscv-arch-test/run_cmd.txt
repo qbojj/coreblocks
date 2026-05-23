@@ -1,1 +1,1 @@
-python run_elfs.py --backend cocotb {debug:--traces}
+python test_arch_elf.py --backend=cocotb {debug:--traces}

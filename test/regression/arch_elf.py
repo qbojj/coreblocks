@@ -5,7 +5,17 @@ import sys
 import re
 from pathlib import Path
 
-from .memory import CoreMemoryModel, MemorySegment, ReadReply, ReadRequest, ReplyStatus, SegmentFlags, WriteReply, WriteRequest, load_segments_from_elf
+from .memory import (
+    CoreMemoryModel,
+    MemorySegment,
+    ReadReply,
+    ReadRequest,
+    ReplyStatus,
+    SegmentFlags,
+    WriteReply,
+    WriteRequest,
+    load_segments_from_elf,
+)
 
 
 ENDTEST_ADDRESS = 0xF0000000
@@ -56,7 +66,10 @@ class ConsoleMMIO(MemorySegment):
 
 class AccessFaultAddressMMIO(MemorySegment):
     def __init__(self):
-        super().__init__(range(ACCESS_FAULT_ADDRESS, ACCESS_FAULT_ADDRESS + 8), SegmentFlags.READ | SegmentFlags.WRITE | SegmentFlags.EXECUTABLE)
+        super().__init__(
+            range(ACCESS_FAULT_ADDRESS, ACCESS_FAULT_ADDRESS + 8),
+            SegmentFlags.READ | SegmentFlags.WRITE | SegmentFlags.EXECUTABLE,
+        )
 
     def read(self, req: ReadRequest) -> ReadReply:
         return ReadReply(status=ReplyStatus.ERROR)

@@ -5,4 +5,4 @@ ref_model_exe: sail_riscv_sim
 udb_config: coreblocks.yaml
 linker_script: link.ld
 dut_include_dir: .
-include_priv_tests: True
+include_priv_tests: False

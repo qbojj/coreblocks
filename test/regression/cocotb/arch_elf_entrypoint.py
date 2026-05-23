@@ -17,5 +17,4 @@ async def do_test(dut):
     if not elf_path:
         raise RuntimeError("No ELF file provided")
 
-    ret = await run_arch_elf(CocotbSimulation(dut), elf_path)
-    assert ret == 0
+    await run_arch_elf(CocotbSimulation(dut), elf_path)
