@@ -118,6 +118,10 @@ class TestCoreAsmSourceBase(TestCoreBase):
                 ]
             )
 
+            # DEBUG: copy generated binary to a file for manual inspection
+            with open(f"test/asm/{filename}.bin", "wb") as f:
+                f.write(ld_tmp.read())
+
             def load_section(section: str):
                 with tempfile.NamedTemporaryFile() as bin_tmp:
                     bin = []
@@ -160,7 +164,7 @@ class TestCoreAsmSourceBase(TestCoreBase):
         ("socks_clint", "socks_clint.asm", 1200, {2: 5, 8: 1}, configurations.basic),
         ("socks_plic", "plic.asm", 1000, {31: 0xCAFE}, configurations.basic),
         ("pmp_fetch", "pmp_fetch.asm", 1000, {1: 1}, configurations.full),
-        ("pmp_lsu", "pmp_lsu.asm", 1000, {1: 1}, configurations.full),
+        ("pmp_lsu", "pmp_lsu.asm", 750, {5: 1}, configurations.full),
         ("smode_exception", "smode_exception.asm", 800, {5: 1, 6: 1, 7: 1, 8: 1}, configurations.full),
     ],
 )
