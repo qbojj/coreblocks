@@ -261,12 +261,12 @@
           "write_idempotent": false,
           "misaligned_exceptions": {
             "load_store": {
-              "None": null
+              "Some": "AlignmentException"
             },
             "vector": {
-              "None": null
+              "Some": "AlignmentException"
             },
-            "amo": "AccessFault"
+            "amo": "AlignmentException"
           },
           "atomic_support": "AMONone",
           "reservability": "RsrvNone",
@@ -297,12 +297,12 @@
           "write_idempotent": true,
           "misaligned_exceptions": {
             "load_store": {
-              "None": null
+              "Some": "AlignmentException"
             },
             "vector": {
-              "None": null
+              "Some": "AlignmentException"
             },
-            "amo": "AccessFault"
+            "amo": "AlignmentException"
           },
           "atomic_support": "AMOCASQ",
           "reservability": "RsrvEventual",
