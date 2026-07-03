@@ -49,6 +49,9 @@ class PrivilegedFn(DecoderManager):
         WFI = auto()
         SRET = auto()
         SFENCEVMA = auto()
+        SINVALVMA = auto()
+        SFENCEWINVAL = auto()
+        SFENCEINVALIR = auto()
 
     def get_instructions(self) -> Sequence[tuple]:
         return [
@@ -58,6 +61,9 @@ class PrivilegedFn(DecoderManager):
         ] + [
             (self.Fn.SRET, OpType.SRET),
             (self.Fn.SFENCEVMA, OpType.SFENCEVMA),
+            (self.Fn.SINVALVMA, OpType.SINVALVMA),
+            (self.Fn.SFENCEWINVAL, OpType.SFENCEWINVAL),
+            (self.Fn.SFENCEINVALIR, OpType.SFENCEINVALIR),
         ] * self.supervisor_enable
 
 
@@ -136,7 +142,9 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                 illegal_sret = 0
 
             if self.fn.supervisor_enable:
-                illegal_sfencevma = (instr_fn == PrivilegedFn.Fn.SFENCEVMA) & (
+                illegal_sfencevma = (
+                    (instr_fn == PrivilegedFn.Fn.SFENCEVMA) | (instr_fn == PrivilegedFn.Fn.SINVALVMA)
+                ) & (
                     (priv_data == PrivilegeLevel.USER)
                     | ((priv_data == PrivilegeLevel.SUPERVISOR) & csr.m_mode.mstatus_tvm.read(m).data)
                 )
@@ -148,6 +156,10 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                 | ((priv_data < PrivilegeLevel.MACHINE) & (csr.m_mode.mstatus_tw.read(m).data))
             )
 
+            illegal_sfence = (
+                (instr_fn == PrivilegedFn.Fn.SFENCEINVALIR) | (instr_fn == PrivilegedFn.Fn.SFENCEWINVAL)
+            ) & (priv_data < PrivilegeLevel.SUPERVISOR)
+
             with condition(m, nonblocking=True) as branch:
                 with branch((instr_fn == PrivilegedFn.Fn.MRET) & ~illegal_mret):
                     mret(m)
@@ -157,7 +169,10 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                         sret(m)
 
                     if self.gen_params.vmem_params.supported_non_bare_schemes and sfence_vma is not None:
-                        with branch((instr_fn == PrivilegedFn.Fn.SFENCEVMA) & ~illegal_sfencevma):
+                        with branch(
+                            ((instr_fn == PrivilegedFn.Fn.SFENCEVMA) | (instr_fn == PrivilegedFn.Fn.SINVALVMA))
+                            & ~illegal_sfencevma
+                        ):
                             # [SFENCE.W.INVAL] - make all current data/refills visible to flushes, so:
                             # - wait for side effects - side_fx_guard
                             # - by the TLB construction, all flushes are linearized after the refills,
@@ -186,7 +201,9 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                     # when interrupt is enabled in xie, but disabled via global mstatus.xIE
                     m.d.sync += finished.eq(wfi_resume)
 
-            m.d.sync += illegal_instruction.eq(illegal_wfi | illegal_mret | illegal_sret | illegal_sfencevma)
+            m.d.sync += illegal_instruction.eq(
+                illegal_wfi | illegal_mret | illegal_sret | illegal_sfencevma | illegal_sfence
+            )
 
         with Transaction().body(m):
             core_state = self.dm.get_dependency(CoreStateKey())(m)
@@ -206,6 +223,12 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                 # SFENCE.VMA, FENCE.I and WFI can't be compressed, so next PC is always pc+4
                 if self.fn.supervisor_enable:
                     with OneHotCase(PrivilegedFn.Fn.SFENCEVMA):
+                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
+                    with OneHotCase(PrivilegedFn.Fn.SINVALVMA):
+                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
+                    with OneHotCase(PrivilegedFn.Fn.SFENCEINVALIR):
+                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
+                    with OneHotCase(PrivilegedFn.Fn.SFENCEWINVAL):
                         m.d.av_comb += ret_pc.eq(instr_pc + 4)
                 with OneHotCase(PrivilegedFn.Fn.FENCEI):
                     m.d.av_comb += ret_pc.eq(instr_pc + 4)
@@ -239,6 +262,15 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                             m.d.av_comb += instr[15:20].eq(imm_view.rs1)
                             m.d.av_comb += instr[20:25].eq(imm_view.rs2)
                             m.d.av_comb += instr[25:32].eq(Funct7.SFENCEVMA)
+                        with m.Case(PrivilegedFn.Fn.SINVALVMA):
+                            imm_view = data.View(self.gen_params.get(PrivUnitLayouts).sfencevma_imm_layout, instr_imm)
+                            m.d.av_comb += instr[15:20].eq(imm_view.rs1)
+                            m.d.av_comb += instr[20:25].eq(imm_view.rs2)
+                            m.d.av_comb += instr[25:32].eq(Funct7.SINVALVMA)
+                        with m.Case(PrivilegedFn.Fn.SFENCEWINVAL):
+                            m.d.av_comb += instr[20:32].eq(Funct12.SFENCEWINVAL)
+                        with m.Case(PrivilegedFn.Fn.SFENCEINVALIR):
+                            m.d.av_comb += instr[20:32].eq(Funct12.SFENCEINVALIR)
                     with m.Default():
                         log.error(m, True, "missing Funct12 case")
 

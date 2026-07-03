@@ -36,6 +36,9 @@ class OpType(IntEnum):
     FENCE = auto()
     FENCEI = auto()
     SFENCEVMA = auto()
+    SINVALVMA = auto()
+    SFENCEWINVAL = auto()
+    SFENCEINVALIR = auto()
     CSR_REG = auto()
     CSR_IMM = auto()
     #: Internal Coreblocks OpType, specifying that instruction caused Exception before FU execution
@@ -168,6 +171,11 @@ optypes_by_extensions = {
     ],
     Extension.ZICOND: [
         OpType.CZERO,
+    ],
+    Extension.SVINVAL: [
+        OpType.SINVALVMA,
+        OpType.SFENCEWINVAL,
+        OpType.SFENCEINVALIR,
     ],
     Extension.XINTMACHINEMODE: [
         OpType.MRET,

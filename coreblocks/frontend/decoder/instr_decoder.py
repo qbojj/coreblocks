@@ -329,7 +329,7 @@ class InstrDecoder(Elaboratable):
             m.d.comb += imm_view.rs1.eq(self.rs1)
 
         # HACK: pass the logical register encoding of SFENCEVMA (same encoding as for CSR instructions for circuit size)
-        with m.If(self.optype == OpType.SFENCEVMA):
+        with m.If((self.optype == OpType.SFENCEVMA) | (self.optype == OpType.SINVALVMA)):
             imm_view = data.View(self.gen_params.get(PrivUnitLayouts).sfencevma_imm_layout, self.imm)
             m.d.comb += imm_view.rs1.eq(self.rs1)
             m.d.comb += imm_view.rs2.eq(self.rs2)

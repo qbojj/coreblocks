@@ -208,6 +208,21 @@ instructions_by_optype = {
             Opcode.SYSTEM, Funct3.PRIV, Funct7.SFENCEVMA, rd_zero=True, instr_type_override=InstrType.R
         ),  # sfence.vma
     ],
+    OpType.SINVALVMA: [
+        Encoding(
+            Opcode.SYSTEM, Funct3.PRIV, Funct7.SINVALVMA, rd_zero=True, instr_type_override=InstrType.R
+        ),  # sinval.vma
+    ],
+    OpType.SFENCEWINVAL: [
+        Encoding(
+            Opcode.SYSTEM, Funct3.PRIV, funct12=Funct12.SFENCEWINVAL, rd_zero=True, rs1_zero=True
+        ),  # sfence.w.inval
+    ],
+    OpType.SFENCEINVALIR: [
+        Encoding(
+            Opcode.SYSTEM, Funct3.PRIV, funct12=Funct12.SFENCEINVALIR, rd_zero=True, rs1_zero=True
+        ),  # sfence.inval.ir
+    ],
     OpType.CZERO: [
         Encoding(Opcode.OP, Funct3.CZEROEQZ, Funct7.CZERO),
         Encoding(Opcode.OP, Funct3.CZERONEZ, Funct7.CZERO),

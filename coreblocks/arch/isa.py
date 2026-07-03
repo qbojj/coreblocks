@@ -99,6 +99,8 @@ class Extension(enum.IntFlag):
     ZBS = auto()
     #: Total store ordering
     ZTSO = auto()
+    #: Granular MMU invalidation
+    SVINVAL = auto()
     #: Coreblocks internal categorizing extension: Machine-Mode Privilieged Instructions
     XINTMACHINEMODE = auto()
     #: Coreblocks internal categorizing extension: Supervisor Instructions
@@ -120,6 +122,7 @@ _extension_requirements = {
     Extension.ZCF: Extension.F | Extension.ZCA,
     Extension.ZCD: Extension.D | Extension.ZCA,
     Extension.ZCB: Extension.ZCA,
+    Extension.SVINVAL: Extension.XINTSUPERVISOR,
 }
 
 # Extensions which implicitly imply another extensions (can be joined using | operator)
