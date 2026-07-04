@@ -56,7 +56,6 @@ small_linux = CoreConfiguration(
                 ShiftUnitComponent(),
                 JumpComponent(),
                 ExceptionUnitComponent(),
-                PrivilegedUnitComponent(supervisor_enable=True),
             ],
             rs_entries=4,
         ),
@@ -67,8 +66,15 @@ small_linux = CoreConfiguration(
             ],
             rs_entries=2,
         ),
-        RSBlockComponent([LSUAtomicWrapperComponent(LSUComponent())], rs_entries=2, rs_type=FifoRS),
-        CSRBlockComponent(),
+        RSBlockComponent(
+            [
+                LSUAtomicWrapperComponent(LSUComponent()),
+                PrivilegedUnitComponent(supervisor_enable=True),
+                CSRBlockComponent(),
+            ],
+            rs_entries=2,
+            rs_type=FifoRS,
+        ),
     ),
     interrupt_custom_count=15,
 )
@@ -95,7 +101,6 @@ full = CoreConfiguration(
                 ZbsComponent(),
                 JumpComponent(),
                 ExceptionUnitComponent(),
-                PrivilegedUnitComponent(supervisor_enable=True),
             ],
             rs_entries=2,  # reduced RS size to reduce impact of bad predictions
         ),
@@ -106,8 +111,15 @@ full = CoreConfiguration(
             ],
             rs_entries=2,
         ),
-        RSBlockComponent([LSUAtomicWrapperComponent(LSUComponent())], rs_entries=4, rs_type=FifoRS),
-        CSRBlockComponent(),
+        RSBlockComponent(
+            [
+                LSUAtomicWrapperComponent(LSUComponent()),
+                PrivilegedUnitComponent(supervisor_enable=True),
+                CSRBlockComponent(),
+            ],
+            rs_entries=2,
+            rs_type=FifoRS,
+        ),
     ),
     compressed=True,
     zcb=True,

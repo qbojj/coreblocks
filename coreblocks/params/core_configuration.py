@@ -37,7 +37,6 @@ basic_configuration: tuple[BlockComponentParams, ...] = (
             ShiftUnitComponent(),
             JumpComponent(),
             ExceptionUnitComponent(),
-            PrivilegedUnitComponent(supervisor_enable=True),
         ],
         rs_entries=4,
     ),
@@ -48,7 +47,14 @@ basic_configuration: tuple[BlockComponentParams, ...] = (
         ],
         rs_entries=2,
     ),
-    RSBlockComponent([LSUComponent()], rs_entries=2, rs_type=FifoRS),
+    RSBlockComponent(
+        [
+            LSUComponent(),
+            PrivilegedUnitComponent(supervisor_enable=True),
+        ],
+        rs_entries=2,
+        rs_type=FifoRS,
+    ),
     CSRBlockComponent(),
 )
 

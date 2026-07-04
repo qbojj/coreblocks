@@ -125,7 +125,6 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
 
         with Transaction().body(m, ready=instr_valid & ~finished):
             side_fx_guard = self.dm.get_dependency(SideFxGuardKey())
-            side_fx_guard(m, rob_id=instr_rob, require_done=0)
             m.d.sync += finished.eq(1)
             self.perf_instr.incr(m, instr_fn)
 
@@ -162,21 +161,22 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
 
             with condition(m, nonblocking=True) as branch:
                 with branch((instr_fn == PrivilegedFn.Fn.MRET) & ~illegal_mret):
+                    side_fx_guard(m, rob_id=instr_rob, require_done=0)
                     mret(m)
                 if self.fn.supervisor_enable:
                     assert sret is not None
                     with branch((instr_fn == PrivilegedFn.Fn.SRET) & ~illegal_sret):
+                        side_fx_guard(m, rob_id=instr_rob, require_done=0)
                         sret(m)
 
                     if self.gen_params.vmem_params.supported_non_bare_schemes and sfence_vma is not None:
-                        with branch(
-                            ((instr_fn == PrivilegedFn.Fn.SFENCEVMA) | (instr_fn == PrivilegedFn.Fn.SINVALVMA))
-                            & ~illegal_sfencevma
-                        ):
+                        with branch((instr_fn == PrivilegedFn.Fn.SFENCEVMA) & ~illegal_sfencevma):
                             # [SFENCE.W.INVAL] - make all current data/refills visible to flushes, so:
                             # - wait for side effects - side_fx_guard
                             # - by the TLB construction, all flushes are linearized after the refills,
                             #   so all later flushes will see the new data.
+                            side_fx_guard(m, rob_id=instr_rob, require_done=0)
+
 
                             # [SINVAL.VMA] - flush the TLB
                             imm_view = data.View(self.gen_params.get(PrivUnitLayouts).sfencevma_imm_layout, instr_imm)
@@ -194,7 +194,26 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                             # - by the TLB construction, all translations are linearized after the flushes,
                             #   so all later translations will see the flushes.
 
+                        with branch((instr_fn == PrivilegedFn.Fn.SFENCEWINVAL) & ~illegal_sfence):
+                            side_fx_guard(m, rob_id=instr_rob, require_done=0)
+
+                        with branch((instr_fn == PrivilegedFn.Fn.SINVALVMA) & ~illegal_sfencevma):
+                            imm_view = data.View(self.gen_params.get(PrivUnitLayouts).sfencevma_imm_layout, instr_imm)
+
+                            sfence_vma[0](
+                                m,
+                                vaddr=instr_s1_val,
+                                asid=instr_s2_val[: self.gen_params.vmem_params.asidlen],
+                                all_vaddrs=imm_view.rs1 == 0,
+                                all_asids=imm_view.rs2 == 0,
+                            )
+
+                        with branch((instr_fn == PrivilegedFn.Fn.SFENCEINVALIR) & ~illegal_sfence):
+                            # only needs to stall the fetcher
+                            pass
+
                 with branch((instr_fn == PrivilegedFn.Fn.FENCEI)):
+                    side_fx_guard(m, rob_id=instr_rob, require_done=0)
                     flush_icache(m)
                 with branch((instr_fn == PrivilegedFn.Fn.WFI) & ~illegal_wfi):
                     # async_interrupt_active implies wfi_resume. WFI should continue normal execution
@@ -220,19 +239,8 @@ class PrivilegedFuncUnit(FuncUnitBase[PrivilegedFn]):
                 if self.fn.supervisor_enable:
                     with OneHotCase(PrivilegedFn.Fn.SRET):
                         m.d.av_comb += ret_pc.eq(csr.s_mode.sepc.read(m).data)
-                # SFENCE.VMA, FENCE.I and WFI can't be compressed, so next PC is always pc+4
-                if self.fn.supervisor_enable:
-                    with OneHotCase(PrivilegedFn.Fn.SFENCEVMA):
-                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
-                    with OneHotCase(PrivilegedFn.Fn.SINVALVMA):
-                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
-                    with OneHotCase(PrivilegedFn.Fn.SFENCEINVALIR):
-                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
-                    with OneHotCase(PrivilegedFn.Fn.SFENCEWINVAL):
-                        m.d.av_comb += ret_pc.eq(instr_pc + 4)
-                with OneHotCase(PrivilegedFn.Fn.FENCEI):
-                    m.d.av_comb += ret_pc.eq(instr_pc + 4)
-                with OneHotCase(PrivilegedFn.Fn.WFI):
+                # SYSTEM instructions and FENCEI cannot be compressed, so next PC is always pc+4
+                with OneHotCase():
                     m.d.av_comb += ret_pc.eq(instr_pc + 4)
 
             with m.If(illegal_instruction):
