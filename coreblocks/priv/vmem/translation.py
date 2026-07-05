@@ -2,7 +2,7 @@ from amaranth import *
 from amaranth.lib.enum import Enum, unique, auto
 
 from transactron import Method, TModule, def_method, Transaction
-from transactron.lib import Forwarder, condition
+from transactron.lib import Forwarder, condition, CrossbarConnectTrans
 from transactron.utils import DependencyContext, make_layout, HardwareLogger
 
 from coreblocks.arch.isa_consts import PrivilegeLevel, SatpMode, PAGE_SIZE_LOG
@@ -35,6 +35,7 @@ class AddressTranslator(Elaboratable):
         gen_params: GenParams,
         *,
         mode: AddressTranslatorMode,
+        tlb_path_fifo: bool = False,
     ) -> None:
         self.gen_params = gen_params
         self.mode = mode
@@ -44,6 +45,8 @@ class AddressTranslator(Elaboratable):
         self.accept = Method(o=self.layouts.accept)
 
         self.dm = DependencyContext.get()
+
+        self.tlb_path_fifo = tlb_path_fifo
 
     def elaborate(self, platform):
         m = TModule()
@@ -134,7 +137,8 @@ class AddressTranslator(Elaboratable):
                 is_store=is_store,
             )
 
-        @def_method(m, self.accept)
+        accept_internal = Method(o=self.layouts.accept)
+        @def_method(m, accept_internal)
         def _():
             data = resp_fwd.read(m)
             tlb_data = Signal(self.layouts.tlb_accept)
@@ -220,5 +224,29 @@ class AddressTranslator(Elaboratable):
                 "page_fault": page_fault,
                 "access_fault": access_fault,
             }
+
+        if self.tlb_path_fifo and self.tlb is not None:
+            m.submodules.accept_fwd = accept_fwd = Forwarder(self.layouts.accept)
+            m.submodules.accept_pipe = accept_pipe = Pipe(self.layouts.accept)
+
+            with Transaction().body():
+                data = accept_internal(m)
+                with m.If(effective_satp_mode == SatpMode.BARE):
+                    accept_fwd.write(data)
+                with m.Else():
+                    accept_pipe.write(data)
+
+            @def_method(m, self.accept)
+            def _():
+                out_data = Signal(self.layouts.accept)
+                with condition(m) as branch:
+                    with branch(True):
+                        m.d.comb += out_data.eq(accept_pipe.read(m))
+                    with branch(True):
+                        m.d.comb += out_data.eq(accept_fwd.read(m))
+                return out_data
+        else:
+            self.accept.provide(accept_internal)
+
 
         return m

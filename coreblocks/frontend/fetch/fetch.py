@@ -78,7 +78,7 @@ class FetchUnit(Elaboratable):
             tags=range(self.gen_params.fetch_width + 1),
         )
 
-        self.addr_translator = AddressTranslator(self.gen_params, mode=AddressTranslatorMode.INSTRUCTION)
+        self.addr_translator = AddressTranslator(self.gen_params, mode=AddressTranslatorMode.INSTRUCTION, tlb_path_fifo=True)
 
     def elaborate(self, platform):
         m = TModule()
