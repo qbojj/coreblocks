@@ -170,6 +170,7 @@ async def run_arch_elf(sim_backend, elf_path: str | Path, timeout_cycles: int = 
         elf_path,
         sim_backend.stop,
         do_workarounds=False,
+        disable_write_protection=True,
     )
 
     result = await sim_backend.run(

@@ -28,7 +28,7 @@ EXCLUDE_EXTENSIONS_SET = $(ARCH_TEST_NOT_COMPILING) $(ARCH_TEST_EXCLUDE_FAILING)
 EXCLUDE_EXTENSIONS = $(shell echo "$(EXCLUDE_EXTENSIONS_SET)" | tr ' ' ',')
 CONFIG_FILES = $(MAKEFILE_DIR)/coreblocks/coreblocks-full/test_config.yaml
 
-export EXCLUDE_EXTENSIONS
+# export EXCLUDE_EXTENSIONS
 export CONFIG_FILES
 
 all: tests

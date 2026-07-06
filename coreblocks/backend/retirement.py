@@ -14,6 +14,7 @@ from coreblocks.interface.layouts import (
 
 from transactron.core import Method, Methods, Transaction, TModule, def_method
 from transactron.utils.dependencies import DependencyContext
+from transactron.utils.logging import HardwareLogger
 from transactron.lib.metrics import *
 
 from coreblocks.params.genparams import GenParams
@@ -33,6 +34,7 @@ from coreblocks.arch.isa_consts import TrapVectorMode
 
 __all__ = ["Retirement"]
 
+log = HardwareLogger("backend.retirement")
 
 class Retirement(Elaboratable):
     def __init__(
@@ -122,6 +124,7 @@ class Retirement(Elaboratable):
             rat_out = self.r_rat_commit[i](m, rl_dst=rob_entry.rob_data.rl_dst, rp_dst=rob_entry.rob_data.rp_dst)
 
             # free old rp_dst from overwritten R-RAT mapping
+
             free_phys_reg(i, rat_out.old_rp_dst)
 
             self.perf_instr_ret.incr[i](m)
@@ -253,6 +256,7 @@ class Retirement(Elaboratable):
                     last_commit_ftq_ptr = Signal.like(rob_entries.entries[0].rob_data.ftq_ptr)
                     for i in range(self.gen_params.retirement_superscalarity):
                         with m.If(i - commit_trapping < no_trap_count):
+                            log.debug(m, True, "Retirement of instruction {}")
                             retire_instr(i, rob_entries.entries[i])
                             m.d.av_comb += last_commit_ftq_ptr.eq(rob_entries.entries[i].rob_data.ftq_ptr)
                         with m.Elif(i < retire_count):
