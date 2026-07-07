@@ -1,13 +1,14 @@
 from math import lcm
 from amaranth import *
 from amaranth.lib.data import ArrayLayout
-from transactron.lib import BasicFifo, WideFifo, Semaphore, Pipe
+from transactron.lib import BasicFifo, WideFifo, Semaphore, Pipe, ConnectTrans
 from transactron.lib.metrics import *
 from transactron.lib.simultaneous import condition
 from transactron.utils import count_trailing_zeros, popcount, assign, StableSelectingNetwork, logging
 from transactron.utils.transactron_helpers import make_layout
 from transactron.utils.amaranth_ext.coding import PriorityEncoder
 from transactron import *
+from transactron.evlog import EventSource
 
 from coreblocks.cache.iface import CacheInterface
 from coreblocks.frontend.decoder.rvc import InstrDecompress, is_instr_compressed
@@ -18,8 +19,10 @@ from coreblocks.params import *
 from coreblocks.interface.layouts import *
 from coreblocks.frontend import FrontendParams
 from coreblocks.priv.vmem.translation import AddressTranslator, AddressTranslatorMode
+from coreblocks.telemetry import InstrFetched
 
 log = logging.HardwareLogger("frontend.fetch")
+evlog = EventSource("frontend.fetch")
 
 
 class FetchUnit(Elaboratable):
@@ -78,13 +81,14 @@ class FetchUnit(Elaboratable):
             tags=range(self.gen_params.fetch_width + 1),
         )
 
+        self.addr_translator = AddressTranslator(self.gen_params, mode=AddressTranslatorMode.INSTRUCTION)
+
     def elaborate(self, platform):
         m = TModule()
 
-        m.submodules.addr_translator = addr_translator = AddressTranslator(
-            self.gen_params, mode=AddressTranslatorMode.INSTRUCTION
-        )
         m.submodules += [self.perf_fetch_utilization]
+
+        m.submodules.addr_translator = self.addr_translator
 
         fetch_width = self.gen_params.fetch_width
         fields = self.gen_params.get(CommonLayoutFields)
@@ -120,7 +124,7 @@ class FetchUnit(Elaboratable):
             self.cont(m, result)
 
         m.submodules.fetch_requests = fetch_requests = BasicFifo(
-            make_layout(fields.pc, ("access_fault", 1), ("page_fault", 1)),
+            make_layout(fields.pc, ("access_fault", 1), ("page_fault", 1), fields.ftq_ptr),
             depth=2,
         )
 
@@ -147,15 +151,24 @@ class FetchUnit(Elaboratable):
             mode=PMPOperationMode.INSTRUCTION_FETCH,
         )
 
+        m.submodules.addr_translator_accept_pipe = addr_translator_accept_pipe = Pipe(
+            self.addr_translator.accept.layout_out
+        )
+        m.submodules += ConnectTrans.create(self.addr_translator.accept, addr_translator_accept_pipe.write)
+
+        m.submodules.ftq_ptr_pipe = ftq_ptr_pipe = Pipe(make_layout(fields.ftq_ptr))
+
         @def_method(m, self.fetch_request)
-        def _(pc):
+        def _(pc, ftq_ptr):
             log.info(m, True, "[IFU] request pc=0x{:x}", pc)
             req_counter.acquire(m)
 
-            addr_translator.request(m, addr=pc, is_store=0)
+            self.addr_translator.request(m, addr=pc, is_store=0)
+            ftq_ptr_pipe.write(m, ftq_ptr=ftq_ptr)
 
         with Transaction().body(m):
-            translated = addr_translator.accept(m)
+            translated = addr_translator_accept_pipe.read(m)
+            ftq_ptr = ftq_ptr_pipe.read(m).ftq_ptr
             access_fault = Signal()
 
             m.d.av_comb += pmp_checker.paddr.eq(translated.paddr)
@@ -169,6 +182,7 @@ class FetchUnit(Elaboratable):
                 pc=translated.vaddr,
                 access_fault=access_fault,
                 page_fault=translated.page_fault,
+                ftq_ptr=ftq_ptr,
             )
 
         #
@@ -177,6 +191,7 @@ class FetchUnit(Elaboratable):
         m.submodules.s1_s2_pipe = s1_s2_pipe = Pipe(
             [
                 fields.fb_addr,
+                fields.ftq_ptr,
                 ("instr_valid", fetch_width),
                 ("access_fault", FetchLayouts.FaultFlag),
                 ("rvc", fetch_width),
@@ -293,6 +308,7 @@ class FetchUnit(Elaboratable):
                 instr_valid=Mux(access_fault.any(), access_fault_instr_position, instr_position_mask),
                 access_fault=access_fault,
                 rvc=is_rvc,
+                ftq_ptr=fetch_request.ftq_ptr,
                 instrs=expanded_instr,
                 instr_block_cross=instr_block_cross,
             )
@@ -321,6 +337,7 @@ class FetchUnit(Elaboratable):
             req_counter.release(m)
             s1_data = s1_s2_pipe.read(m)
 
+            ftq_ptr = s1_data.ftq_ptr
             instrs = s1_data.instrs
             fetch_block_addr = s1_data.fb_addr
             instr_valid = s1_data.instr_valid
@@ -401,6 +418,8 @@ class FetchUnit(Elaboratable):
                     raw_instrs[i].predicted_taken.eq(redirect & (predcheck_res.fb_instr_idx == i)),
                     raw_instrs[i].access_fault.eq(s1_data.access_fault),
                     raw_instrs[i].cfi_type.eq(predecoded_instr[i].cfi_type),
+                    raw_instrs[i].ftq_ptr.eq(ftq_ptr),
+                    raw_instrs[i].ftq_offset.eq(i),
                 ]
 
             if Extension.ZCA in self.gen_params.isa.extensions:
@@ -421,12 +440,25 @@ class FetchUnit(Elaboratable):
                     with m.If(fault_any | unsafe_stall | redirect):
                         self.fetch_writeback(
                             m,
+                            ftq_ptr=ftq_ptr,
                             redirect=redirect,
                             redirect_target=predcheck_res.redirect_target,
                         )
                         flush()
 
                     self.perf_fetch_utilization.incr(m, popcount(fetch_mask))
+
+                    for i in range(fetch_width):
+                        evlog.emit(
+                            m,
+                            InstrFetched.hw(
+                                ftq_ptr=ftq_ptr,
+                                pc=raw_instrs[i].pc,
+                                instr=raw_instrs[i].instr,
+                                ftq_offset=i,
+                            ),
+                            when=fetch_mask[i],
+                        )
 
                     # Make sure this is called only once to avoid a huge mux on arguments
                     m.d.av_comb += [aligner.valids.eq(fetch_mask), aligner.inputs.eq(raw_instrs)]
