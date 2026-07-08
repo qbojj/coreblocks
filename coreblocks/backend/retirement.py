@@ -268,7 +268,6 @@ class Retirement(Elaboratable):
                     last_commit_ftq_ptr = Signal.like(rob_entries.entries[0].rob_data.ftq_ptr)
                     for i in range(self.gen_params.retirement_superscalarity):
                         with m.If(i - commit_trapping < no_trap_count):
-                            log.debug(m, True, "Retirement of instruction {}")
                             retire_instr(i, rob_entries.entries[i])
                             m.d.av_comb += last_commit_ftq_ptr.eq(rob_entries.entries[i].rob_data.ftq_ptr)
                         with m.Elif(i < retire_count):

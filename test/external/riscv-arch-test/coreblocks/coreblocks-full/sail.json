@@ -197,49 +197,13 @@
     // region (see `memory.regions`).
     "dtb_address": {
       "len": 64,
-      "value": "0x1000"
+      "value": "0x0"
     },
     // The locations and sizes of memory regions and their PMAs.  These regions
     // are required to be aligned to 4K (page) boundaries.  To specify
     // the `misaligned` PMA attribute for a region, see the comments for
     // `memory.misaligned.exceptions` above.
     "regions": [
-      // ROM
-      {
-        "base": {
-          "len": 64,
-          "value": "0x1000"
-        },
-        "size": {
-          "len": 64,
-          "value": "0x1000"
-        },
-        "attributes": {
-          "mem_type": "IOMemory",
-          "cacheable": true,
-          "coherent": false,
-          "executable": false,
-          "readable": true,
-          "writable": false,
-          "read_idempotent": true,
-          "write_idempotent": true,
-          "misaligned_exceptions": {
-            "load_store": {
-              "None": null
-            },
-            "vector": {
-              "None": null
-            },
-            "amo": "AccessFault"
-          },
-          "atomic_support": "AMONone",
-          "reservability": "RsrvNone",
-          "supports_cbo_zero": false,
-          "supports_pte_read": false,
-          "supports_pte_write": false
-        },
-        "include_in_device_tree": false
-      },
       // MMIO
       {
         "base": {
