@@ -35,12 +35,16 @@
 #define RVMODEL_INTERRUPT_LATENCY 100
 #define RVMODEL_TIMER_INT_SOON_DELAY 100
 
-##### Machine Timer / Software (via CLINT) #####
+##### Machine Timer / Software (via ACLINT) #####
 
 #define CLINT_BASE_ADDRESS        0xE1000000
-#define RVMODEL_MTIME_ADDRESS     (CLINT_BASE_ADDRESS + 0xBFF8)
-#define RVMODEL_MTIMECMP_ADDRESS  (CLINT_BASE_ADDRESS + 0x4000)
+// MSWI device
 #define RVMODEL_MSIP_ADDRESS      (CLINT_BASE_ADDRESS + 0x0)
+// MTIMER device
+#define RVMODEL_MTIMECMP_ADDRESS  (CLINT_BASE_ADDRESS + 0x4000)
+#define RVMODEL_MTIME_ADDRESS     (CLINT_BASE_ADDRESS + 0xBFF8)
+// SSWI device
+#define RVMODEL_SSIP_ADDRESS      (CLINT_BASE_ADDRESS + 0xC000)
 
 ##### Machine / Supervisor External Interrupts (via PLIC) #####
 
@@ -114,7 +118,13 @@
   li _R2, RVMODEL_MSIP_ADDRESS                   ;\
   sw zero, 0(_R2)
 
-#define RVMODEL_SET_SSW_INT(_R1, _R2)
-#define RVMODEL_CLR_SSW_INT(_R1, _R2)
+#define RVMODEL_SET_SSW_INT(_R1, _R2)             \
+  li _R1, 1                                      ;\
+  li _R2, RVMODEL_SSIP_ADDRESS                   ;\
+  sw _R1, 0(_R2)
+
+#define RVMODEL_CLR_SSW_INT(_R1, _R2)             \
+  li _R2, RVMODEL_SSIP_ADDRESS                   ;\
+  sw zero, 0(_R2)
 
 #endif // _RVMODEL_MACROS_H
