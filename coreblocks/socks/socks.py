@@ -1,16 +1,22 @@
 from amaranth import *
 from amaranth.lib.wiring import Component, In, Out, connect, flipped
+from transactron.utils import DependencyContext
 
 from coreblocks.arch.isa_consts import InterruptCauseNumber
 from coreblocks.core import Core
 from coreblocks.params import GenParams
-from coreblocks.peripherals.wishbone import WishboneInterface, WishboneMuxer
+from coreblocks.peripherals.wishbone import WishboneInterface
 from coreblocks.priv.traps.interrupt_controller import ISA_RESERVED_INTERRUPTS
-from coreblocks.socks.clint import ClintPeriph
-from coreblocks.socks.peripheral import bus_in_periph_range
+from coreblocks.socks.clint import AclintMtimer, AclintMswi, AclintSswi, ClintMtimeKey
+from coreblocks.socks.peripheral import make_peripheral_muxer
 from coreblocks.socks.plic import PlicPeriph
 
+# CLINT is MSWI followed by MTIMER
 CLINT_BASE = 0xE1000000
+ACLINT_MSWI_BASE = CLINT_BASE + 0x0000
+ACLINT_MTIMER_BASE = CLINT_BASE + 0x4000
+
+ACLINT_SSWI_BASE = CLINT_BASE + 0xC000
 PLIC_BASE = 0xE2000000
 
 # This is a temporary wrapper solution to provide external memory-mapped components, required to run Linux.
@@ -33,7 +39,7 @@ class Socks(Component):
     In both cases MTI and MSI are ignored and provided from CLINT.
     """
 
-    def __init__(self, core: Core, core_gen_params: GenParams, with_plic: bool = True):
+    def __init__(self, core: Core, core_gen_params: GenParams, with_plic: bool = True, with_aclint_sswi: bool = True):
         super().__init__(
             {
                 "wb_instr": Out(WishboneInterface(core_gen_params.wb_params).signature),
@@ -44,7 +50,15 @@ class Socks(Component):
             }
         )
 
-        self.clint = ClintPeriph(base_addr=CLINT_BASE, wb_params=core_gen_params.wb_params)
+        self.aclint_mswi = AclintMswi(base_addr=ACLINT_MSWI_BASE, wb_params=core_gen_params.wb_params)
+        self.aclint_mtimer = AclintMtimer(base_addr=ACLINT_MTIMER_BASE, wb_params=core_gen_params.wb_params)
+        DependencyContext.get().add_dependency(ClintMtimeKey(), self.aclint_mtimer.mtime)
+
+        if with_aclint_sswi:
+            self.aclint_sswi = AclintSswi(base_addr=ACLINT_SSWI_BASE, wb_params=core_gen_params.wb_params)
+        else:
+            self.aclint_sswi = None
+
         if with_plic:
             self.plic = PlicPeriph(
                 base_addr=PLIC_BASE,
@@ -61,29 +75,23 @@ class Socks(Component):
     def elaborate(self, platform):
         m = Module()
 
-        muxer_ssel = Signal(3)
-        periph_muxer = WishboneMuxer(self.core_gen_params.wb_params, muxer_ssel)
+        devices = [
+            self.aclint_mswi,
+            self.aclint_mtimer,
+        ]
+        if self.aclint_sswi:
+            devices.append(self.aclint_sswi)
+        if self.plic:
+            devices.append(self.plic)
 
+        m.submodules.periph_muxer = periph_muxer = make_peripheral_muxer(
+            m,
+            self.core_gen_params.wb_params,
+            devices,
+        )
         connect(m, self.core.wb_instr, flipped(self.wb_instr))
-
-        connect(m, self.core.wb_data, periph_muxer.master_wb)
-        connect(m, periph_muxer.slaves[0], flipped(self.wb_data))
-
-        connect(m, periph_muxer.slaves[1], self.clint.bus)
-        if self.plic:
-            connect(m, periph_muxer.slaves[2], self.plic.bus)
-
-        clint_addr = Signal()
-        plic_addr = Signal()
-        m.d.comb += clint_addr.eq(bus_in_periph_range(self.core.wb_data, self.clint))
-        if self.plic:
-            m.d.comb += plic_addr.eq(bus_in_periph_range(self.core.wb_data, self.plic))
-        m.d.comb += muxer_ssel.eq(Cat(~(clint_addr | plic_addr), clint_addr, plic_addr))
-
-        m.submodules.clint = self.clint
-        if self.plic:
-            m.submodules.plic = self.plic
-        m.submodules.periph_muxer = periph_muxer
+        connect(m, periph_muxer.master_wb, self.core.wb_data)
+        connect(m, flipped(self.wb_data), periph_muxer.slaves[0])
 
         m.submodules.core = self.core
 
@@ -94,7 +102,9 @@ class Socks(Component):
         else:
             m.d.comb += self.core.interrupts[InterruptCauseNumber.MEI].eq(self.interrupts[InterruptCauseNumber.MEI])
             m.d.comb += self.core.interrupts[ISA_RESERVED_INTERRUPTS:].eq(self.interrupts[ISA_RESERVED_INTERRUPTS:])
-        m.d.comb += self.core.interrupts[InterruptCauseNumber.MTI].eq(self.clint.mtip)
-        m.d.comb += self.core.interrupts[InterruptCauseNumber.MSI].eq(self.clint.msip)
+        m.d.comb += self.core.interrupts[InterruptCauseNumber.MTI].eq(self.aclint_mtimer.mtip)
+        m.d.comb += self.core.interrupts[InterruptCauseNumber.MSI].eq(self.aclint_mswi.msip)
+        if self.aclint_sswi:
+            m.d.comb += self.core.interrupts[InterruptCauseNumber.SSI].eq(self.aclint_sswi.ssip)
 
         return m

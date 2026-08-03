@@ -1,9 +1,10 @@
 from amaranth import *
 from amaranth.utils import ceil_log2
 from amaranth_types import ModuleLike
+from amaranth.lib import wiring
 from typing import Protocol
 
-from coreblocks.peripherals.wishbone import WishboneInterface
+from coreblocks.peripherals.wishbone import WishboneInterface, WishboneMuxer, WishboneParameters
 
 
 class SocksPeripheral(Protocol):
@@ -66,3 +67,18 @@ def gen_memory_mapped_register(
                             write_mask = -1
 
                         m.d.sync += reg_slice.eq((bus.dat_w & write_mask) | (reg_slice & ~write_mask))
+
+
+def make_peripheral_muxer(
+    m: Module, wb_params: WishboneParameters, peripherals: list[SocksPeripheral]
+) -> WishboneMuxer:
+    """Create WishboneMuxer that captures all peripheral requests and routes them to the correct peripheral.
+    master_wb and slaves[0] of the muxer are left to be connected by the caller.
+    """
+    ssel_tga = Signal(1 + len(peripherals))
+    muxer = WishboneMuxer(wb_params, ssel_tga)
+    for i, periph in enumerate(peripherals, 1):
+        m.d.comb += ssel_tga[i].eq(bus_in_periph_range(muxer.master_wb, periph))
+        wiring.connect(m, muxer.slaves[i], periph.bus)
+    m.d.comb += ssel_tga[0].eq(~ssel_tga[1:].any())
+    return muxer
