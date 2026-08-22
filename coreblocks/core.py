@@ -230,7 +230,7 @@ class Core(Component):
             announcement.rf_write_val.provide(self.RF.write[i])
             announce_result.append(announcement.push_result)
 
-        with Transaction().body(m):
+        with Transaction().always_body(m):
             self.announcement_counter.incr(m, tag=sum(method.run for method in announce_result))
 
         m.submodules.announcement_connector = CrossbarConnectTrans.create(
@@ -251,7 +251,6 @@ class Core(Component):
         retirement.instr_decrement.provide(core_counter.decrement)
         retirement.trap_entry.provide(self.interrupt_controller.entry)
         retirement.async_interrupt_cause.provide(self.interrupt_controller.interrupt_cause)
-        retirement.checkpoint_get_active_tags.provide(crat.get_active_tags)
         retirement.checkpoint_tag_free.provide(crat.free_tag)
 
         m.submodules.func_blocks_unifier = self.func_blocks_unifier

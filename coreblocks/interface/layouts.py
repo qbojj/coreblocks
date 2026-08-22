@@ -1,6 +1,6 @@
 from amaranth import signed
 from amaranth.lib.data import ArrayLayout
-from amaranth.lib.enum import IntFlag, IntEnum, auto
+from amaranth.lib.enum import IntFlag, Enum, auto
 from coreblocks.params import GenParams
 from coreblocks.arch import *
 from coreblocks.interface.views import CircularBufferPointer
@@ -189,8 +189,8 @@ class CommonLayoutFields:
 class AddressTranslationLayouts:
     """Layouts used by virtual-to-physical address translation methods."""
 
-    class TLBResult(IntEnum, shape=2):
-        HIT = auto()
+    class TLBResult(Enum, shape=2):
+        HIT = 0
         PAGE_FAULT = auto()
         ACCESS_FAULT = auto()
 
@@ -424,7 +424,7 @@ class RATLayouts:
 
         self.rrat_peek_out = make_layout(self.entries)
 
-        self.rollback_in = make_layout(fields.tag)
+        self.rollback_in = make_layout(fields.tag, fields.pc, fields.ftq_ptr)
         self.get_active_tags_out = make_layout(self.active_tags_bitmask)
 
         self.crat_commit_checkpoint_in = make_layout(fields.tag, fields.commit_checkpoint)
@@ -572,7 +572,7 @@ class RetirementLayouts:
         self.require_done: LayoutListField = ("require_done", 1)
         """Don't run if there exist earlier not done instructions in ROB"""
 
-        self.side_fx_guard_in = make_layout(fields.rob_id, self.require_done)
+        self.side_fx_guard_in = make_layout(fields.rob_id, fields.tag, self.require_done)
 
         self.flushing = ("flushing", 1)
         """ Core is currently flushed """
@@ -710,7 +710,7 @@ class FetchLayouts:
             fields.pc,
             self.access_fault,
             fields.rvc,
-            fields.cfi_type,
+            fields.commit_checkpoint,
             fields.ftq_ptr,
             fields.ftq_offset,
         )
@@ -777,6 +777,7 @@ class DecodeLayouts:
             fields.imm,
             fields.csr,
             fields.pc,
+            fields.commit_checkpoint,
             fields.ftq_ptr,
             fields.ftq_offset,
         )
@@ -891,8 +892,8 @@ class LSULayouts:
 class CSRRegisterLayouts:
     """Layouts used in the control and status registers."""
 
-    class WriteOpType(IntEnum):
-        CSR_WRITE = auto()
+    class WriteOpType(Enum, shape=2):
+        CSR_WRITE = 0
         CSR_SET = auto()
         CSR_CLEAR = auto()
 
