@@ -8,12 +8,12 @@ dynamic = ["version"]
 description = "RISC-V out-of-order core for education and research purposes"
 requires-python = ">=3.13"
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Scientific/Engineering",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
 ]
 dependencies = [
     "amaranth~=0.5.8",
@@ -23,7 +23,7 @@ dependencies = [
     "transactron~=0.13.1",
 ]
 license = "BSD-3-Clause"
-license-files = [ "LICENSE" ]
+license-files = ["LICENSE"]
 
 [project.urls]
 Homepage = "https://kuznia-rdzeni.org"
@@ -33,32 +33,32 @@ Issues = "https://github.com/kuznia-rdzeni/coreblocks/issues"
 
 [project.optional-dependencies]
 dev = [
-    # Linting
-    "pyright==1.1.393",
-    "flake8==7.0.0",
-    "black==24.4.2",
-    # Testing
-    "pytest==8.0.0",
-    "pytest-xdist==3.5.0",
-    "hypothesis==6.99.6",
-    "parameterized==0.8.1",
-    "cocotb==1.9.2",
-    "cocotb-bus==0.2.1",
-    "docutils==0.21.2",
-    "markupsafe==2.0.1",
-    # Documentation
-    "pep8-naming==0.13.3",
-    "Sphinx==8.2.3",
-    "sphinx-rtd-theme==3.0.2",
-    "myst-parser==4.0.1",
-    "numpydoc==1.5.0",
-    "sphinxcontrib-mermaid==0.8.1",
-    # Other
-    "pre-commit==2.16.0",
-    "pyelftools==0.29",
-    "tabulate==0.9.0",
-    "filelock==3.13.1",
-    "capstone==5.0.9",
+  # Linting
+  "pyright==1.1.393",
+  "flake8==7.0.0",
+  "black==24.4.2",
+  # Testing
+  "pytest==8.0.0",
+  "pytest-xdist==3.5.0",
+  "hypothesis==6.99.6",
+  "parameterized==0.8.1",
+  "cocotb==1.9.2",
+  "cocotb-bus==0.2.1",
+  "docutils==0.21.2",
+  "markupsafe==2.0.1",
+  # Documentation
+  "pep8-naming==0.13.3",
+  "Sphinx==8.2.3",
+  "sphinx-rtd-theme==3.0.2",
+  "myst-parser==4.0.1",
+  "numpydoc==1.5.0",
+  "sphinxcontrib-mermaid==0.8.1",
+  # Other
+  "pre-commit==2.16.0",
+  "pyelftools==0.29",
+  "tabulate==0.9.0",
+  "filelock==3.13.1",
+  "capstone==5.0.9",
 ]
 
 [project.scripts]
@@ -70,17 +70,8 @@ include = ["coreblocks*"]
 [tool.setuptools_scm]
 
 [tool.pyright]
-include = [
-    "coreblocks",
-    "test",
-    "constants",
-    "scripts",
-]
-exclude = [
-    "**/node_modules",
-    "**/__pycache__",
-    "**/external",
-]
+include = ["coreblocks", "test", "constants", "scripts"]
+exclude = ["**/node_modules", "**/__pycache__", "**/external"]
 ignore = []
 reportMissingImports = true
 reportMissingTypeStubs = false
@@ -90,24 +81,20 @@ pythonPlatform = "Linux"
 
 [tool.pytest.ini_options]
 minversion = "7.2.2"
-testpaths = [
-    "tests",
-]
+testpaths = ["tests"]
 norecursedirs = [
-    "*.egg",
-    ".*",
-    "build",
-    "dist",
-    "venv",
-    "__traces__",
-    "__pycache__",
-    "test/external",
+  "*.egg",
+  ".*",
+  "build",
+  "dist",
+  "venv",
+  "__traces__",
+  "__pycache__",
+  "test/external",
 ]
 filterwarnings = [
-    "ignore:cannot collect test class 'TestbenchContext':pytest.PytestCollectionWarning",
-    "ignore:cannot collect test class 'TestbenchIO':pytest.PytestCollectionWarning",
-    "ignore:No files were found in testpaths:pytest.PytestConfigWarning:",
+  "ignore:cannot collect test class 'TestbenchContext':pytest.PytestCollectionWarning",
+  "ignore:cannot collect test class 'TestbenchIO':pytest.PytestCollectionWarning",
+  "ignore:No files were found in testpaths:pytest.PytestConfigWarning:",
 ]
-markers = [
-    "collection_order"
-]
+markers = ["collection_order"]
