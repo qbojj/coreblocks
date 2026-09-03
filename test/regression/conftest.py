@@ -11,23 +11,23 @@ profile_dir = test_dir.joinpath("__profiles__")
 evlog_dir = test_dir.joinpath("__evlogs__")
 
 ARCH_EXPECTED_FAIL = {
-    # with virtual memory, we need reservation set <=2^12
+    # [#961] with virtual memory, we need reservation set <=2^12
     ".*exceptions.*zalrsc.*",
     "pmpzalrsc_cfg_wr",
-    # misaligned amo should cause write flavoured exception
+    # [#960] misaligned amo should cause write flavoured exception
     ".*exceptions.*zaamo.*",
     "pmpzaamo_cfg_wr",
-    # [?] ?????
-    "InterruptsU",
-    # lr.w needs rs2=0
+    # [#1086] lr.w needs rs2=0
     r"Ssstrict(Sm|S|U)_IllegalInstr-05.elf",
+    # [#1089] fence.i with nonzero rd free physical register
+    r"Zifencei-.*",
     # [upstream] sail always implements mcountinhibit, but coreblocks doesn't
     r"Sm_mcsr_access",
     r"Sm_mcsr_cntr",
     r"Sm_mcsr_walk-02",
     r"SsstrictSm_CSR-07",
-    # [!!!!] coreblocks assertion
-    r"Zifencei-.*",
+    # ?????
+    "InterruptsU",
 }
 
 ARCH_EXPECTED_TIMEOUT = {
