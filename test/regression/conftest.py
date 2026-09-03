@@ -11,12 +11,7 @@ profile_dir = test_dir.joinpath("__profiles__")
 evlog_dir = test_dir.joinpath("__evlogs__")
 
 ARCH_EXPECTED_FAIL = {
-    # [?] misaligned exceptions should be either before address translation at the very end
-    "ExceptionsS",
-    "sv32_exceptions_mprv_(S|U)_Mmode",
-    # [?] trap loop
-    "sv32_exceptions_(S|U)mode",
-    # [?] sail requires size of reservation set <= 12
+    # with virtual memory, we need reservation set <=2^12
     ".*exceptions.*zalrsc.*",
     "pmpzalrsc_cfg_wr",
     # misaligned amo should cause write flavoured exception
@@ -24,14 +19,20 @@ ARCH_EXPECTED_FAIL = {
     "pmpzaamo_cfg_wr",
     # [?] ?????
     "InterruptsU",
-    # coreblocks assertion
+    # lr.w needs rs2=0
+    r"Ssstrict(Sm|S|U)_IllegalInstr-05.elf",
+    # [upstream] sail always implements mcountinhibit, but coreblocks doesn't
+    r"Sm_mcsr_access",
+    r"Sm_mcsr_cntr",
+    r"Sm_mcsr_walk-02",
+    r"SsstrictSm_CSR-07",
+    # [!!!!] coreblocks assertion
     r"Zifencei-.*",
 }
 
 ARCH_EXPECTED_TIMEOUT = {
     "InterruptsS",
     "InterruptsSSm",
-    "U",
 }
 
 

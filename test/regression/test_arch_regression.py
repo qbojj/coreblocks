@@ -80,7 +80,7 @@ class ConsoleMMIO(MMIOSegment):
 class AccessFaultAddressMMIO(MMIOSegment):
     def __init__(self):
         super().__init__(
-            range(ACCESS_FAULT_ADDRESS, ACCESS_FAULT_ADDRESS + 128),
+            range(ACCESS_FAULT_ADDRESS, ACCESS_FAULT_ADDRESS + 0x1000),
             SegmentFlags.READ | SegmentFlags.WRITE | SegmentFlags.EXECUTABLE,
         )
 
