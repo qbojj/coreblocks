@@ -71,8 +71,8 @@ class Retirement(Elaboratable):
         self.async_interrupt_cause = Method(o=interrupt_controller_layouts.interrupt_cause)
         self.checkpoint_tag_free = Method()
 
-        self.pure_active_count = Signal(range(gen_params.retirement_superscalarity + 1))
-        self.instret_csr = CSRRegister(None, gen_params, width=64, fu_read_map=lambda _, v: v + self.pure_active_count)
+        self.instret_offset = Signal(range(gen_params.retirement_superscalarity + 1))
+        self.instret_csr = CSRRegister(None, gen_params, width=64, fu_read_map=lambda _, v: v + self.instret_offset)
         self.instret_shadow = DoubleShadowCSR(
             gen_params,
             self.instret_csr,
@@ -184,6 +184,7 @@ class Retirement(Elaboratable):
             rob_entries = self.rob_peek(m)
             active_tags = self.dependency_manager.get_dependency(ActiveTagsKey())(m).active_tags
             ecr_entry = self.exception_cause_get(m)
+            inhibit_instret = csr_instances.m_mode.mcountinhibit.read(m).data[CounterEnableFieldOffsets.IR]
 
         # CRAT can currently deallocate at most one tag per cycle, this logic reduces the retire rate
         # TODO: improve
@@ -293,11 +294,12 @@ class Retirement(Elaboratable):
                         with m.Else():
                             m.next = "TRAP_FLUSH"
 
-                    self.instret_csr.write(
-                        m,
-                        data=self.instret_csr.read(m).data
-                        + Mux(exception, active_no_trap_count + commit_trapping, popcount(tag_active_mask)),
-                    )
+                    with m.If(~inhibit_instret):
+                        self.instret_csr.write(
+                            m,
+                            data=self.instret_csr.read(m).data
+                            + Mux(exception, active_no_trap_count + commit_trapping, popcount(tag_active_mask)),
+                        )
 
                     last_commit_ftq_ptr = Signal.like(rob_entries.entries[0].rob_data.ftq_ptr)
                     last_commit_ftq_ptr_v = Signal()
@@ -429,7 +431,7 @@ class Retirement(Elaboratable):
             m.d.comb += current_tag.eq(current_tag_expr)
             m.d.comb += pure_inactive_offset[i].eq(~active_tags[current_tag] & (~(impure_mask | -impure_mask))[i])
 
-        m.d.comb += self.pure_active_count.eq(pure_count - popcount(pure_inactive_offset))
+        m.d.comb += self.instret_offset.eq(Mux(inhibit_instret, 0, pure_count - popcount(pure_inactive_offset)))
 
         # Disable executing any side effects from instructions in core when it is flushed
         core_flushing = Signal()
