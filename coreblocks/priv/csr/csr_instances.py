@@ -100,6 +100,9 @@ class MachineModeCSRRegisters(Elaboratable):
             gen_params,
             ro_bits=~counteren_writeable,
         )
+        self.mcountinhibit = CSRRegister(
+            CSRAddress.MCOUNTINHIBIT, gen_params, ro_bits=~counteren_writeable | (1 << CounterEnableFieldOffsets.TM)
+        )
 
         self.mtvec = AliasedCSR(CSRAddress.MTVEC, gen_params)
 
@@ -263,23 +266,27 @@ class MachineModeCSRRegisters(Elaboratable):
                 m.submodules[name] = value
 
         with Transaction().always_body(m):
-            self.mcycle.increment(m)
+            countinhibit = self.mcountinhibit.read(m).data
+            with m.If(~countinhibit[CounterEnableFieldOffsets.CY]):
+                self.mcycle.increment(m)
 
         def hpm_event_combiner(m, args, runs):
             return {"events": reduce(or_, (Mux(runs[i], arg.events, 0) for i, arg in enumerate(args)))}
 
         @def_method(m, self.hpm_event_report, nonexclusive=True, combiner=hpm_event_combiner)
         def _(events):
+            countinhibit = self.mcountinhibit.read(m).data
             for i in range(3, 3 + self.hpm_counters_count):
                 counter = getattr(self, f"mhpmcounter{i}")
                 event_select = getattr(self, f"mhpmevent{i}").value
-                with m.Switch(event_select):
-                    for event in HPMEvent:
-                        if event == HPMEvent.NO_EVENT:
-                            continue
-                        with m.Case(event):
-                            with m.If(events[event]):
-                                counter.increment(m)
+                with m.If(~countinhibit[i]):
+                    with m.Switch(event_select):
+                        for event in HPMEvent:
+                            if event == HPMEvent.NO_EVENT:
+                                continue
+                            with m.Case(event):
+                                with m.If(events[event]):
+                                    counter.increment(m)
 
         return m
 
