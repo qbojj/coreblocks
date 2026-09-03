@@ -1,0 +1,41 @@
+# Zaamo/lrsc
+priv/ExceptionsSvZaamo/sv32_exceptions_Zaamo_Mmode.log    RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zaamo_Mmode.S"
+priv/ExceptionsSvZaamo/sv32_exceptions_Zaamo_Smode.log    RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zaamo_Smode.S"
+priv/ExceptionsSvZaamo/sv32_exceptions_Zaamo_Umode.log    RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zaamo_Umode.S"
+priv/ExceptionsSvZalrsc/sv32_exceptions_Zalrsc_Mmode.log  RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zalrsc_Mmode.S"
+priv/ExceptionsSvZalrsc/sv32_exceptions_Zalrsc_Smode.log  RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zalrsc_Smode.S"
+priv/ExceptionsSvZalrsc/sv32_exceptions_Zalrsc_Umode.log  RVCP-SUMMARY: TEST FAILED - Test File "sv32_exceptions_Zalrsc_Umode.S"
+priv/ExceptionsZaamo/ExceptionsZaamo-00.log               RVCP-SUMMARY: TEST FAILED - Test File "ExceptionsZaamo-00.S"
+priv/ExceptionsZalrsc/ExceptionsZalrsc-00.log             RVCP-SUMMARY: TEST FAILED - Test File "ExceptionsZalrsc-00.S"
+priv/pmp/pmp32/PMPZaamo/pmpzaamo_cfg_wr.log               RVCP-SUMMARY: TEST FAILED - Test File "pmpzaamo_cfg_wr.S"
+priv/pmp/pmp32/PMPZalrsc/pmpzalrsc_cfg_wr.log             RVCP-SUMMARY: TEST FAILED - Test File "pmpzalrsc_cfg_wr.S"
+
+
+priv/ExceptionsSm/ExceptionsSm_medeleg_m-00.log           TIMEOUT after 3000s
+priv/ExceptionsSm/ExceptionsSm_medeleg_s-00.log           TIMEOUT after 3000s
+priv/ExceptionsSm/ExceptionsSm_medeleg_u-00.log           TIMEOUT after 3000s
+
+
+priv/InterruptsS/InterruptsS-00.log                       TIMEOUT after 3000s
+priv/InterruptsSSm/InterruptsSSm-00.log                   TIMEOUT after 3000s
+priv/InterruptsU/InterruptsU-00.log                       RVCP-SUMMARY: TEST FAILED - Test File "InterruptsU-00.S"
+
+priv/Sm/Sm_csr_ro-00.log                                  TIMEOUT after 3000s
+priv/Sm/Sm_csr_ro-01.log                                  TIMEOUT after 3000s
+priv/Sm/Sm_mcsr_access-00.log                             RVCP-SUMMARY: TEST FAILED - Test File "Sm_mcsr_access-00.S"
+priv/Sm/Sm_mcsr_cntr-00.log                               RVCP-SUMMARY: TEST FAILED - Test File "Sm_mcsr_cntr-00.S"
+priv/Sm/Sm_mcsr_walk-02.log                               RVCP-SUMMARY: TEST FAILED - Test File "Sm_mcsr_walk-02.S"
+
+priv/S/S_scsr_insufficient_priv-00.log                    TIMEOUT after 3000s
+priv/S/S_scsr_insufficient_priv-01.log                    TIMEOUT after 3000s
+priv/S/S_scsr_ro-00.log                                   TIMEOUT after 3000s
+
+priv/U/U_ucsr-00.log                                      TIMEOUT after 3000s
+priv/U/U_ucsr-01.log                                      TIMEOUT after 3000s
+priv/U/U_ucsr-02.log                                      TIMEOUT after 3000s
+priv/U/U_ucsr-03.log                                      TIMEOUT after 3000s
+priv/U/U_ucsr-04.log                                      TIMEOUT after 3000s
+priv/U/U_ucsr-05.log                                      TIMEOUT after 3000s
+
+priv/ZicntrS/ZicntrS-00.log                               TIMEOUT after 3000s
+rv32i/Zifencei/Zifencei-fence.i-00.log                    No RVCP-SUMMARY line found
