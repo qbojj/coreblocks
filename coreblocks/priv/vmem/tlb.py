@@ -128,15 +128,10 @@ class TLBCAM(Elaboratable):
 
         # Replacement candidate is the first invalid entry, or the round-robin entry if all are valid
         # The order of checks: currently present entry -> invalid entry -> round-robin.
-        m.d.comb += self.replace_candidate.eq(self.replacement_rr_index)
-
-        for way in range(self.ways):
-            with m.If(~self.valid_match[way]):
-                m.d.comb += self.replace_candidate.eq(way)
-
-        for way in range(self.ways):
-            with m.If(self.full_match[way]):
-                m.d.comb += self.replace_candidate.eq(way)
+        matching = []
+        matching += [(self.full_match[way], way) for way in range(self.ways)]
+        matching += [(~self.valid_match[way], way) for way in range(self.ways)]
+        m.d.comb += self.replace_candidate.eq(OneHotMux.create(m, matching, default_input=self.replacement_rr_index, priority=True))
 
         m.d.comb += self.next_replacement_rr_index.eq(mod_incr(self.replacement_rr_index, self.ways))
 
@@ -238,38 +233,13 @@ class FullyAssociativeTLB(Elaboratable):
 
         m.submodules.refill_semaphore = refill_semaphore = Semaphore(1)
 
-        refill_ret = Signal(self.layout.tlb_accept)
-
-        def do_query(cam, is_store):
-            ask_backing = Signal()
-            with m.If(~cam.full_match.any()):
-                m.d.av_comb += ask_backing.eq(1)
-            if self.gen_params.vmem_params.supports_auto_a_d_management:
-                with m.Elif(is_store & ~cam.matched_entry.permissions.d):
-                    # We have found an entry, but it doesn't have the dirty bit set
-                    # Ask the backing resolver to set it (Svade semantic)
-                    m.d.av_comb += ask_backing.eq(1)
-
-            ret = {
-                "result": AddressTranslationLayouts.TLBResult.HIT,
-                "asid": current_asid,
-                "permissions": cam.matched_entry.permissions,
-                "ppn": cam.matched_entry.ppn,
-                "size_class": cam.matched_entry.size_class,
-            }
-
-            return ask_backing, ret
-
         for port in range(self.ports):
-            cam = TLBCAM(self.gen_params, self.entries)
+            m.submodules[f"cam_{port}"] = cam = TLBCAM(self.gen_params, self.entries)
+            m.submodules[f"result_fwd_{port}"] = result_fwd = Forwarder(self.layout.tlb_accept)
+
             m.d.comb += cam.ways_data.eq(entries)
             m.d.comb += cam.replacement_rr_index.eq(replacement_rr_index)
 
-            result_fwd = Forwarder(self.layout.tlb_accept)
-            m.submodules[f"result_fwd_{port}"] = result_fwd
-            m.submodules[f"cam_{port}"] = cam
-
-            slow_path = Signal()
             vpn_req = Signal(vpn_bits)
             is_store_req = Signal()
 
@@ -284,12 +254,10 @@ class FullyAssociativeTLB(Elaboratable):
                     m.d.av_comb += cam.checked_vpn.eq(vpn_req)
                     m.d.av_comb += cam.checked_asid.eq(resp.asid)
 
-                    m.d.av_comb += refill_ret.eq(resp)
                     result_fwd.write(m, resp)
-                    m.d.sync += slow_path.eq(0)
                     m.d.sync += handling_refill.eq(0)
 
-                    with m.If(cond=resp.result == AddressTranslationLayouts.TLBResult.HIT):
+                    with m.If(resp.result == AddressTranslationLayouts.TLBResult.HIT):
                         m.d.sync += replacement_rr_index.eq(cam.next_replacement_rr_index)
                         m.d.sync += assign(
                             entries[cam.replace_candidate],
@@ -303,8 +271,7 @@ class FullyAssociativeTLB(Elaboratable):
                             },
                             fields=AssignType.ALL,
                         )
-
-            with m.Elif(flush_queue.level != 0):
+            with m.If(flush_queue.level > 0):
                 if port == 0:
                     with Transaction(name="Flush").body(m, ready=refill_semaphore.acquire_ready):
                         self.perf_flushes.incr(m)
@@ -316,44 +283,63 @@ class FullyAssociativeTLB(Elaboratable):
                         for way in range(self.entries):
                             with m.If((req.all_asids | cam.asid_match[way]) & (req.all_vaddrs | cam.addr_match[way])):
                                 m.d.sync += entries[way].eq(0)
-
-            with m.Elif(~slow_path):
-
-                @def_method(m, self.request[port])
-                def _(vpn, is_store):
-                    self.perf_loads.incr(m)
-                    self.perf_latency.start(m)
-
-                    m.d.av_comb += cam.checked_vpn.eq(vpn)
-                    m.d.av_comb += cam.checked_asid.eq(current_asid)
-                    ask_backing, ret = do_query(cam, is_store)
-
-                    with m.If(ask_backing):
-                        self.perf_misses.incr[port](m)
-                        m.d.sync += [
-                            slow_path.eq(1),
-                            vpn_req.eq(vpn),
-                            is_store_req.eq(is_store),
-                        ]
-                    with m.Else():
-                        self.perf_hits.incr[port](m)
-                        result_fwd.write(m, ret)
-
             with m.Else():
-                m.d.av_comb += cam.checked_vpn.eq(vpn_req)
-                m.d.av_comb += cam.checked_asid.eq(current_asid)
+                ask_backing = Signal()
+                is_store_val = Signal()
+                with m.If(~cam.full_match.any()):
+                    m.d.av_comb += ask_backing.eq(1)
+                if self.gen_params.vmem_params.supports_auto_a_d_management:
+                    with m.Elif(is_store_val & ~cam.matched_entry.permissions.d):
+                        # We have found an entry, but it doesn't have the dirty bit set
+                        # Ask the backing resolver to set it (Svade semantic)
+                        m.d.av_comb += ask_backing.eq(1)
 
-                ask_backing, ret = do_query(cam, is_store_req)
+                ret = {
+                    "result": AddressTranslationLayouts.TLBResult.HIT,
+                    "asid": current_asid,
+                    "permissions": cam.matched_entry.permissions,
+                    "ppn": cam.matched_entry.ppn,
+                    "size_class": cam.matched_entry.size_class,
+                }
 
-                with m.If(ask_backing):
-                    with Transaction(name=f"RequestRefill_{port}").body(m):
-                        refill_semaphore.acquire(m)
-                        self.backing_resolver.request(m, vpn=vpn_req, is_store=is_store_req)
-                        m.d.sync += handling_refill.eq(1)
-                with m.Else():
-                    with Transaction(name=f"AsyncResolve_{port}").body(m):
-                        result_fwd.write(m, ret)
-                        m.d.sync += slow_path.eq(0)
+                with m.FSM():
+                    with m.State("FAST"):
+                        @def_method(m, self.request[port])
+                        def _(vpn, is_store):
+                            self.perf_loads.incr(m)
+                            self.perf_latency.start(m)
+
+                            m.d.av_comb += cam.checked_vpn.eq(vpn)
+                            m.d.av_comb += cam.checked_asid.eq(current_asid)
+                            m.d.av_comb += is_store_val.eq(is_store)
+
+                            m.d.sync += vpn_req.eq(vpn)
+                            m.d.sync += is_store_req.eq(is_store)
+
+                            with m.If(ask_backing):
+                                # move cross-lane checks out of critical path
+                                m.next = "SLOW"
+                            with m.Else():
+                                self.perf_hits.incr[port](m)
+                                result_fwd.write(m, ret)
+
+                    with m.State("SLOW"):
+                        m.d.av_comb += cam.checked_vpn.eq(vpn_req)
+                        m.d.av_comb += cam.checked_asid.eq(current_asid)
+                        m.d.av_comb += is_store_val.eq(is_store_req)
+
+                        with m.If(ask_backing):
+                            with Transaction(name=f"RequestRefill_{port}").body(m):
+                                m.next = "FAST"
+
+                                refill_semaphore.acquire(m)
+                                self.backing_resolver.request(m, vpn=vpn_req, is_store=is_store_req)
+                                m.d.sync += handling_refill.eq(1)
+                        with m.Else():
+                            with Transaction(name=f"AsyncResolve_{port}").body(m):
+                                m.next = "FAST"
+
+                                result_fwd.write(m, ret)
 
             @def_method(m, self.accept[port])
             def _():
@@ -422,6 +408,13 @@ class SetAssociativeTLB(Elaboratable):
             accept=self.accept[port],
         )
 
+    class SetLayout(StructLayout):
+        def __init__(self, gen_params: GenParams, ways: int, repl_policy_shape: Shape):
+            super().__init__({
+                "ways_data": ArrayLayout(TLBEntry(gen_params), ways),
+                "repl_policy_data": repl_policy_shape,
+            })
+
     def elaborate(self, platform):
         m = TModule()
 
@@ -435,33 +428,22 @@ class SetAssociativeTLB(Elaboratable):
 
         csr = self.dm.get_dependency(CSRInstancesKey())
 
-        vpn_bits = self.gen_params.vmem_params.max_tlb_vpn_bits
-        asid_bits = self.gen_params.vmem_params.asidlen
         set_index_bits = (self.sets - 1).bit_length()
-
-        current_asid = Signal(asid_bits)
-        m.d.comb += current_asid.eq(csr.s_mode.satp_asid)
+        max_class = self.gen_params.vmem_params.max_tlb_size_class
 
         m.submodules.cam = cam = TLBCAM(self.gen_params, self.ways)
 
         m.submodules.mem = mem = memory.Memory(
-            shape=ArrayLayout(TLBEntry(self.gen_params), self.ways), depth=self.sets, init=[]
+            shape=self.SetLayout(self.gen_params, self.ways, cam.replacement_rr_index.shape()), depth=self.sets, init=[]
         )
-        set_rd = mem.read_port()
-        set_wr = mem.write_port()
-        m.d.comb += cam.ways_data.eq(set_rd.data)
+        mem_rd = mem.read_port()
+        mem_wr = mem.write_port()
+        m.d.comb += cam.ways_data.eq(mem_rd.data.ways_data)
+        m.d.comb += cam.replacement_rr_index.eq(mem_rd.data.repl_policy_data)
 
-        m.submodules.rd_mem = rd_mem = memory.Memory(shape=cam.replacement_rr_index.shape(), depth=self.sets, init=[])
-        rd_rd = rd_mem.read_port()
-        rd_wr = rd_mem.write_port()
-        m.d.comb += cam.replacement_rr_index.eq(rd_rd.data)
+        m.d.comb += mem_rd.en.eq(0)
 
         m.submodules.fwd = fwd = Forwarder(self.layout.tlb_accept)
-
-        flushing = Signal(init=1)
-        refill_in_progress = Signal()
-
-        m.submodules.request_pipe = request_pipe = Pipe(self.layout.tlb_request)
 
         requested_set = Signal(set_index_bits)
         requested_class = Signal(self.gen_params.vmem_params.tlb_size_class_bits)
@@ -483,93 +465,148 @@ class SetAssociativeTLB(Elaboratable):
             self.request[port].provide(port_serializer.serialize_in[port])
             self.accept[port].provide(port_serializer.serialize_out[port])
 
-        @def_method(m, request, ready=~flushing)
-        def _(vpn, is_store):
-            self.perf_loads.incr(m)
-            self.perf_latency.start(m)
-
-            set_idx = vpn_to_set_idx(vpn, 0)
-            m.d.sync += requested_set.eq(set_idx)
-            m.d.sync += requested_class.eq(0)
-
-            m.d.comb += set_rd.addr.eq(set_idx)
-            m.d.comb += set_rd.en.eq(1)
-
-            m.d.sync += cam.checked_asid.eq(current_asid)
-            m.d.sync += cam.checked_vpn.eq(vpn)
-
-            request_pipe.write(m, vpn=vpn, is_store=is_store)
-
-        with Transaction(name="TLBLookup").body(m, ready=~refill_in_progress):
-            req = request_pipe.peek(m)
-
-            miss = Signal()
-            ask_backing = Signal()
-
-            m.d.av_comb += miss.eq(~cam.full_match.any())
-            max_class = self.gen_params.vmem_params.max_tlb_size_class
-
-            with m.If(miss):
-                m.d.av_comb += ask_backing.eq(requested_class == max_class)
-            if self.gen_params.vmem_params.supports_auto_a_d_management:
-                with m.Elif(req.is_store & ~cam.matched_entry.permissions.d):
-                    m.d.av_comb += ask_backing.eq(1)
-
-            with m.If(ask_backing):
-                self.perf_misses.incr(m)
-                m.d.sync += refill_in_progress.eq(1)
-                self.backing_resolver.request(m, vpn=req.vpn, is_store=req.is_store)
-            with m.Elif(miss & (requested_class < max_class)):
-                set_idx = vpn_to_set_idx(req.vpn, requested_class + 1)
-                m.d.sync += requested_set.eq(set_idx)
-                m.d.sync += requested_class.eq(requested_class + 1)
-
-                m.d.comb += set_rd.addr.eq(set_idx)
-                m.d.comb += set_rd.en.eq(1)
-            with m.Else():
-                request_pipe.read(m)
-                self.perf_hits.incr(m)
-
-                fwd.write(
-                    m,
-                    result=AddressTranslationLayouts.TLBResult.HIT,
-                    asid=cam.checked_asid,
-                    permissions=cam.matched_entry.permissions,
-                    ppn=cam.matched_entry.ppn,
-                    size_class=cam.matched_entry.size_class,
-                )
-
-        refill_set_idx = Signal(set_index_bits)
+        req_is_store = Signal()
         refill_response = Signal(self.layout.tlb_accept)
 
+        # the flush after reset will start with garbage data in the CAM, but we do not care, as
+        # it is a full flush and will invalidate all entries from the first set. Following set flushes
+        # will have correct data
+        flush_all_vaddrs = Signal(init=1)
+        flush_all_asids = Signal(init=1)
+
+        next_requested_set = Signal(set_index_bits)
+        next_requested_set_size_class = Signal.like(requested_class)
+        m.d.av_comb += next_requested_set_size_class.eq(requested_class + 1)
+        with m.Switch(next_requested_set_size_class):
+            for size_class in range(max_class + 1):
+                with m.Case(size_class):
+                    m.d.comb += next_requested_set.eq(vpn_to_set_idx(cam.checked_vpn, size_class))
+
         with m.FSM():
+            with m.State("FLUSH"):
+                m.d.av_comb += mem_wr.data.eq(mem_rd.data)
+
+                for way in range(self.ways):
+                    with m.If((flush_all_asids | cam.asid_match[way]) & (flush_all_vaddrs | cam.addr_match[way])):
+                        m.d.av_comb += mem_wr.data.ways_data[way].valid.eq(0)
+
+                next_flush_set = Signal(set_index_bits)
+                flush_done = Signal()
+
+                with m.If(flush_all_vaddrs):
+                    m.d.comb += next_flush_set.eq(requested_set + 1)
+                    m.d.comb += flush_done.eq(requested_set == self.sets - 1)
+                with m.Else():
+                    m.d.comb += next_flush_set.eq(next_requested_set)
+                    m.d.comb += flush_done.eq(requested_class == max_class)
+
+                m.d.sync += requested_set.eq(next_flush_set)
+                m.d.sync += requested_class.eq(requested_class + 1)
+
+                m.d.av_comb += mem_wr.addr.eq(requested_set)
+                m.d.comb += mem_wr.en.eq(1)
+
+                m.d.comb += mem_rd.addr.eq(next_flush_set)
+                m.d.comb += mem_rd.en.eq(1)
+
+                with m.If(flush_done):
+                    m.next = "IDLE"
+
             with m.State("IDLE"):
-                with Transaction().body(m):
-                    req = request_pipe.peek(m)
+                @def_method(m, request)
+                def _(arg):
+                    self.perf_loads.incr(m)
+                    self.perf_latency.start(m)
+
+                    set_idx = vpn_to_set_idx(arg.vpn, 0)
+                    m.d.sync += requested_set.eq(set_idx)
+                    m.d.sync += requested_class.eq(0)
+
+                    m.d.comb += mem_rd.addr.eq(set_idx)
+                    m.d.comb += mem_rd.en.eq(1)
+
+                    m.d.sync += cam.checked_asid.eq(csr.s_mode.satp_asid)
+                    m.d.sync += cam.checked_vpn.eq(arg.vpn)
+
+                    m.next = "LOOKUP"
+
+                @def_method(m, self.sfence_vma)
+                def _(vaddr, asid, all_vaddrs, all_asids):
+                    self.perf_flushes.incr(m)
+
+                    m.d.sync += flush_all_vaddrs.eq(all_vaddrs)
+                    m.d.sync += flush_all_asids.eq(all_asids)
+
+                    flush_set = Mux(all_vaddrs, 0, vpn_to_set_idx(vaddr >> PAGE_SIZE_LOG, 0))
+                    m.d.sync += requested_set.eq(flush_set)
+                    m.d.sync += requested_class.eq(0)
+
+                    m.d.comb += mem_rd.addr.eq(flush_set)
+                    m.d.comb += mem_rd.en.eq(1)
+
+                    m.d.sync += cam.checked_asid.eq(asid)
+                    m.d.sync += cam.checked_vpn.eq(vaddr >> PAGE_SIZE_LOG)
+
+                    m.next = "FLUSH"
+
+                self.sfence_vma.add_conflict(request, Priority.LEFT)
+
+            with m.State("LOOKUP"):
+                with Transaction(name="TLBLookup").body(m):
+                    miss = Signal()
+                    ask_backing = Signal()
+
+                    m.d.av_comb += miss.eq(~cam.full_match.any())
+
+                    with m.If(miss):
+                        m.d.av_comb += ask_backing.eq(requested_class == max_class)
+                    if self.gen_params.vmem_params.supports_auto_a_d_management:
+                        with m.Elif(req_is_store & ~cam.matched_entry.permissions.d):
+                            m.d.av_comb += ask_backing.eq(1)
+
+                    with m.If(ask_backing):
+                        self.perf_misses.incr(m)
+                        self.backing_resolver.request(m, vpn=cam.checked_vpn, is_store=req_is_store)
+                        m.next = "REFILL_WAIT"
+                    with m.Elif(miss):
+                        m.d.sync += requested_set.eq(next_requested_set)
+                        m.d.sync += requested_class.eq(requested_class + 1)
+
+                        m.d.comb += mem_rd.addr.eq(next_requested_set)
+                        m.d.comb += mem_rd.en.eq(1)
+                    with m.Else():
+                        self.perf_hits.incr(m)
+
+                        fwd.write(
+                            m,
+                            result=AddressTranslationLayouts.TLBResult.HIT,
+                            asid=cam.checked_asid,
+                            permissions=cam.matched_entry.permissions,
+                            ppn=cam.matched_entry.ppn,
+                            size_class=cam.matched_entry.size_class,
+                        )
+                        m.next = "IDLE"
+
+            with m.State("REFILL_WAIT"):
+                with Transaction(name="TLBRefillWait").body(m):
                     resp = self.backing_resolver.accept(m)
 
-                    set_idx = vpn_to_set_idx(req.vpn, resp.size_class)
-                    m.d.sync += refill_set_idx.eq(set_idx)
+                    m.d.av_comb += next_requested_set_size_class.eq(resp.size_class)
+                    m.d.sync += requested_set.eq(next_requested_set)
                     m.d.sync += refill_response.eq(resp)
 
-                    m.d.comb += set_rd.addr.eq(set_idx)
-                    m.d.comb += rd_rd.addr.eq(set_idx)
-                    m.d.comb += set_rd.en.eq(1)
-                    m.d.comb += rd_rd.en.eq(1)
+                    m.d.comb += mem_rd.addr.eq(next_requested_set)
+                    m.d.comb += mem_rd.en.eq(1)
 
                     with m.If(resp.result == AddressTranslationLayouts.TLBResult.HIT):
-                        m.next = "REFILL"
+                        m.next = "WRITEBACK"
                     with m.Else():
-                        request_pipe.read(m)
                         fwd.write(m, resp)
-                        m.d.sync += refill_in_progress.eq(0)
+                        m.next = "IDLE"
 
-            with m.State("REFILL"):
-                with Transaction().body(m):
-                    req = request_pipe.read(m)
-
+            with m.State("WRITEBACK"):
+                with Transaction(name="TLBWriteback").always_body(m):
                     fwd.write(m, refill_response)
-                    m.d.sync += refill_in_progress.eq(0)
 
                     new_entry = Signal(TLBEntry(self.gen_params))
                     m.d.top_comb += assign(
@@ -577,7 +614,7 @@ class SetAssociativeTLB(Elaboratable):
                         {
                             "valid": 1,
                             "asid": refill_response.asid,
-                            "vpn": req.vpn,
+                            "vpn": cam.checked_vpn,
                             "ppn": refill_response.ppn,
                             "size_class": refill_response.size_class,
                             "permissions": refill_response.permissions,
@@ -585,15 +622,13 @@ class SetAssociativeTLB(Elaboratable):
                         fields=AssignType.ALL,
                     )
 
-                    m.d.comb += rd_wr.data.eq(cam.next_replacement_rr_index)
-                    m.d.comb += rd_wr.addr.eq(refill_set_idx)
-                    m.d.comb += set_wr.addr.eq(refill_set_idx)
-                    m.d.comb += set_wr.data.eq(set_rd.data)
-                    m.d.comb += set_wr.data[cam.replace_candidate].eq(new_entry)
+                    m.d.av_comb += mem_wr.data.eq(mem_rd.data)
+                    m.d.av_comb += mem_wr.data.ways_data[cam.replace_candidate].eq(new_entry)
+                    m.d.av_comb += mem_wr.data.repl_policy_data.eq(cam.next_replacement_rr_index)
+                    m.d.av_comb += mem_wr.addr.eq(requested_set)
 
                     with m.If(refill_response.result == AddressTranslationLayouts.TLBResult.HIT):
-                        m.d.comb += rd_wr.en.eq(1)
-                        m.d.comb += set_wr.en.eq(1)
+                        m.d.comb += mem_wr.en.eq(1)
 
                     m.next = "IDLE"
 
@@ -601,65 +636,5 @@ class SetAssociativeTLB(Elaboratable):
         def _():
             self.perf_latency.stop(m)
             return fwd.read(m)
-
-        # the flush after reset will start with garbage data in the CAM, but we do not care, as
-        # it is a full flush and will invalidate all entries from the first set. Following set flushes
-        # will have correct data
-        flush_vpn = Signal(vpn_bits)
-        flush_all_vaddrs = Signal(init=1)
-        flush_all_asids = Signal(init=1)
-        flush_set = Signal(set_index_bits)
-        flush_size_class = Signal(self.gen_params.vmem_params.tlb_size_class_bits)
-        flush_fetched = Signal()
-
-        @def_method(m, self.sfence_vma, ready=~flushing & ~request_pipe.read.ready & ~refill_in_progress)
-        def _(vaddr, asid, all_vaddrs, all_asids):
-            self.perf_flushes.incr(m)
-
-            m.d.sync += flushing.eq(1)
-            m.d.sync += cam.checked_asid.eq(asid)
-            m.d.sync += cam.checked_vpn.eq(vaddr >> PAGE_SIZE_LOG)
-            m.d.sync += flush_vpn.eq(vaddr >> PAGE_SIZE_LOG)
-            m.d.sync += flush_all_vaddrs.eq(all_vaddrs)
-            m.d.sync += flush_all_asids.eq(all_asids)
-
-            m.d.sync += flush_set.eq(Mux(all_vaddrs, 0, vpn_to_set_idx(vaddr >> PAGE_SIZE_LOG, 0)))
-            m.d.sync += flush_fetched.eq(0)
-            m.d.sync += flush_size_class.eq(0)
-
-            m.d.comb += set_rd.addr.eq(flush_set)
-            m.d.comb += set_rd.en.eq(1)
-
-        self.sfence_vma.add_conflict(request, Priority.LEFT)
-
-        with m.If(flushing):
-            m.d.comb += set_wr.data.eq(set_rd.data)
-            for way in range(self.ways):
-                with m.If((flush_all_asids | cam.asid_match[way]) & (flush_all_vaddrs | cam.addr_match[way])):
-                    m.d.comb += set_wr.data[way].valid.eq(0)
-
-            m.d.comb += set_wr.addr.eq(flush_set)
-            m.d.comb += set_wr.en.eq(1)
-
-            next_flush_set = Signal(set_index_bits)
-            flush_done = Signal()
-
-            with m.If(flush_all_vaddrs):
-                m.d.comb += next_flush_set.eq(flush_set + 1)
-                m.d.comb += flush_done.eq(flush_set == self.sets - 1)
-            with m.Else():
-                m.d.comb += next_flush_set.eq(vpn_to_set_idx(flush_vpn, flush_size_class + 1))
-                m.d.sync += flush_size_class.eq(flush_size_class + 1)
-
-                with m.If(flush_size_class == self.gen_params.vmem_params.max_tlb_size_class):
-                    m.d.comb += flush_done.eq(1)
-
-            m.d.sync += flush_set.eq(next_flush_set)
-
-            m.d.comb += set_rd.addr.eq(next_flush_set)
-            m.d.comb += set_rd.en.eq(1)
-
-            with m.If(flush_done):
-                m.d.sync += flushing.eq(0)
 
         return m
