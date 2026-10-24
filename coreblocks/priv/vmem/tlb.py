@@ -5,7 +5,7 @@ from amaranth.lib.data import StructLayout, ArrayLayout, View
 import amaranth.lib.memory as memory
 
 from transactron import Method, Methods, TModule, def_method, Priority, Transaction
-from transactron.utils import DependencyContext, assign, mod_incr, OneHotMux
+from transactron.utils import AssignType, DependencyContext, assign, mod_incr, OneHotMux
 from transactron.lib import (
     BasicFifo,
     Forwarder,
@@ -301,6 +301,7 @@ class FullyAssociativeTLB(Elaboratable):
                                 "size_class": resp.size_class,
                                 "permissions": resp.permissions,
                             },
+                            fields=AssignType.ALL,
                         )
 
             with m.Elif(flush_queue.level != 0):
@@ -532,7 +533,7 @@ class SetAssociativeTLB(Elaboratable):
                 fwd.write(
                     m,
                     result=AddressTranslationLayouts.TLBResult.HIT,
-                    asid=current_asid,
+                    asid=cam.checked_asid,
                     permissions=cam.matched_entry.permissions,
                     ppn=cam.matched_entry.ppn,
                     size_class=cam.matched_entry.size_class,
@@ -571,14 +572,18 @@ class SetAssociativeTLB(Elaboratable):
                     m.d.sync += refill_in_progress.eq(0)
 
                     new_entry = Signal(TLBEntry(self.gen_params))
-                    m.d.top_comb += [
-                        new_entry.valid.eq(1),
-                        new_entry.asid.eq(refill_response.asid),
-                        new_entry.vpn.eq(req.vpn),
-                        new_entry.ppn.eq(refill_response.ppn),
-                        new_entry.size_class.eq(refill_response.size_class),
-                        new_entry.permissions.eq(refill_response.permissions),
-                    ]
+                    m.d.top_comb += assign(
+                        new_entry,
+                        {
+                            "valid": 1,
+                            "asid": refill_response.asid,
+                            "vpn": req.vpn,
+                            "ppn": refill_response.ppn,
+                            "size_class": refill_response.size_class,
+                            "permissions": refill_response.permissions,
+                        },
+                        fields=AssignType.ALL,
+                    )
 
                     m.d.comb += rd_wr.data.eq(cam.next_replacement_rr_index)
                     m.d.comb += rd_wr.addr.eq(refill_set_idx)
