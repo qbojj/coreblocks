@@ -440,6 +440,7 @@ class SetAssociativeTLB(Elaboratable):
         mem_wr = mem.write_port()
         m.d.comb += cam.ways_data.eq(mem_rd.data.ways_data)
         m.d.comb += cam.replacement_rr_index.eq(mem_rd.data.repl_policy_data)
+        m.d.av_comb += mem_wr.data.eq(mem_rd.data)
 
         m.d.comb += mem_rd.en.eq(0)
 
@@ -484,8 +485,6 @@ class SetAssociativeTLB(Elaboratable):
 
         with m.FSM():
             with m.State("FLUSH"):
-                m.d.av_comb += mem_wr.data.eq(mem_rd.data)
-
                 for way in range(self.ways):
                     with m.If((flush_all_asids | cam.asid_match[way]) & (flush_all_vaddrs | cam.addr_match[way])):
                         m.d.av_comb += mem_wr.data.ways_data[way].valid.eq(0)
@@ -598,16 +597,10 @@ class SetAssociativeTLB(Elaboratable):
                     m.d.comb += mem_rd.addr.eq(next_requested_set)
                     m.d.comb += mem_rd.en.eq(1)
 
-                    with m.If(resp.result == AddressTranslationLayouts.TLBResult.HIT):
-                        m.next = "WRITEBACK"
-                    with m.Else():
-                        fwd.write(m, resp)
-                        m.next = "IDLE"
+                    m.next = "WRITEBACK"
 
             with m.State("WRITEBACK"):
-                with Transaction(name="TLBWriteback").always_body(m):
-                    fwd.write(m, refill_response)
-
+                with Transaction(name="TLBWriteback").body(m):
                     new_entry = Signal(TLBEntry(self.gen_params))
                     m.d.top_comb += assign(
                         new_entry,
@@ -622,14 +615,12 @@ class SetAssociativeTLB(Elaboratable):
                         fields=AssignType.ALL,
                     )
 
-                    m.d.av_comb += mem_wr.data.eq(mem_rd.data)
                     m.d.av_comb += mem_wr.data.ways_data[cam.replace_candidate].eq(new_entry)
                     m.d.av_comb += mem_wr.data.repl_policy_data.eq(cam.next_replacement_rr_index)
                     m.d.av_comb += mem_wr.addr.eq(requested_set)
+                    m.d.comb += mem_wr.en.eq(refill_response.result == AddressTranslationLayouts.TLBResult.HIT)
 
-                    with m.If(refill_response.result == AddressTranslationLayouts.TLBResult.HIT):
-                        m.d.comb += mem_wr.en.eq(1)
-
+                    fwd.write(m, refill_response)
                     m.next = "IDLE"
 
         @def_method(m, accept)
