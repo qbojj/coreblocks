@@ -223,9 +223,6 @@ class FullyAssociativeTLB(Elaboratable):
         vpn_bits = self.gen_params.vmem_params.max_tlb_vpn_bits
         asid_bits = self.gen_params.vmem_params.asidlen
 
-        current_asid = Signal(asid_bits)
-        m.d.av_comb += current_asid.eq(csr.s_mode.satp_asid)
-
         entries = Signal(ArrayLayout(TLBEntry(self.gen_params), self.entries))
         replacement_rr_index = Signal(range(self.entries))
 
@@ -242,6 +239,7 @@ class FullyAssociativeTLB(Elaboratable):
             m.d.comb += cam.replacement_rr_index.eq(replacement_rr_index)
 
             vpn_req = Signal(vpn_bits)
+            asid_req = Signal(asid_bits)
             is_store_req = Signal()
 
             handling_refill = Signal()
@@ -297,7 +295,7 @@ class FullyAssociativeTLB(Elaboratable):
 
                 ret = {
                     "result": AddressTranslationLayouts.TLBResult.HIT,
-                    "asid": current_asid,
+                    "asid": cam.checked_asid,
                     "permissions": cam.matched_entry.permissions,
                     "ppn": cam.matched_entry.ppn,
                     "size_class": cam.matched_entry.size_class,
@@ -311,10 +309,11 @@ class FullyAssociativeTLB(Elaboratable):
                             self.perf_latency.start(m)
 
                             m.d.av_comb += cam.checked_vpn.eq(vpn)
-                            m.d.av_comb += cam.checked_asid.eq(current_asid)
+                            m.d.av_comb += cam.checked_asid.eq(csr.s_mode.satp_asid)
                             m.d.av_comb += is_store_val.eq(is_store)
 
                             m.d.sync += vpn_req.eq(vpn)
+                            m.d.sync += asid_req.eq(csr.s_mode.satp_asid)
                             m.d.sync += is_store_req.eq(is_store)
 
                             with m.If(ask_backing):
@@ -326,7 +325,7 @@ class FullyAssociativeTLB(Elaboratable):
 
                     with m.State("SLOW"):
                         m.d.av_comb += cam.checked_vpn.eq(vpn_req)
-                        m.d.av_comb += cam.checked_asid.eq(current_asid)
+                        m.d.av_comb += cam.checked_asid.eq(asid_req)
                         m.d.av_comb += is_store_val.eq(is_store_req)
 
                         with m.If(ask_backing):
