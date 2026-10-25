@@ -14,6 +14,7 @@ from transactron.lib import (
     FIFOLatencyMeasurer,
     Serializer,
     Semaphore,
+    ConnectTrans,
 )
 
 from coreblocks.arch.isa_consts import PAGE_SIZE_LOG, SatpMode
@@ -463,8 +464,13 @@ class SetAssociativeTLB(Elaboratable):
         )
 
         for port in range(self.ports):
-            self.request[port].provide(port_serializer.serialize_in[port])
-            self.accept[port].provide(port_serializer.serialize_out[port])
+            m.submodules[f"in_pipe_{port}"] = in_pipe = Pipe(self.layout.tlb_request)
+            m.submodules[f"out_pipe_{port}"] = out_pipe = Pipe(self.layout.tlb_accept)
+            self.request[port].provide(in_pipe.write)
+            self.accept[port].provide(out_pipe.read)
+
+            m.submodules += ConnectTrans.create(in_pipe.read, port_serializer.serialize_in[port])
+            m.submodules += ConnectTrans.create(out_pipe.write, port_serializer.serialize_out[port])
 
         req_is_store = Signal()
         refill_response = Signal(self.layout.tlb_accept)
