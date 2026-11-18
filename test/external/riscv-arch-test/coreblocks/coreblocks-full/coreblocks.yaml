@@ -223,11 +223,46 @@ params:
   HPM_COUNTER4_WIDTH: 64
   # Legal mhpmeventN selector values: 0 = NO_EVENT, 1 = BRANCH_MISPREDICTION (coreblocks.arch.isa_consts.HPMEvent)
   HPM_EVENTS: [0, 1]
-  MCOUNTINHIBIT_IMPLEMENTED: false
   MCOUNTENABLE_EN:
     [
       true,
       true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]
+  MCOUNTINHIBIT_IMPLEMENTED: true
+  COUNTINHIBIT_EN:
+    [
+      true,
+      false,
       true,
       true,
       true,
